@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RFSentinel - Painel de Controle</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #111827; /* bg-gray-900 */
+            color: #d1d5db; /* text-gray-300 */
+        }
+        .status-active {
+            color: #22c55e; /* text-green-500 */
+            text-shadow: 0 0 8px #22c55e;
+        }
+        .status-stopped {
+            color: #ef4444; /* text-red-500 */
+            text-shadow: 0 0 8px #ef4444;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+    <div class="max-w-4xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-100">📡 RFSentinel</h1>
+            <p class="text-lg text-gray-400">Scanner e Capturador de Sinais de RF</p>
+        </header>
+
+        <div class="bg-gray-800 rounded-lg shadow-lg p-6 mb-8">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h2 class="text-2xl font-semibold text-gray-200">Status do Scanner</h2>
+                    <p id="status-text" class="text-xl font-bold mt-1">{{ status }}</p>
+                </div>
+                <button id="toggle-button" class="px-6 py-2 font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-colors">
+                    Ativar/Parar
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-gray-800 rounded-lg shadow-lg p-6">
+            <h2 class="text-2xl font-semibold text-gray-200 mb-4">Últimas Capturas</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-left">
+                    <thead class="bg-gray-700">
+                        <tr>
+                            <th class="p-3">Alvo</th>
+                            <th class="p-3">Frequência</th>
+                            <th class="p-3">Data e Hora</th>
+                            <th class="p-3">Arquivo</th>
+                        </tr>
+                    </thead>
+                    <tbody id="signals-table">
+                        {% for signal in signals %}
+                        <tr class="border-b border-gray-700">
+                            <td class="p-3">{{ signal.target }}</td>
+                            <td class="p-3">{{ "%.3f"|format(signal.frequency / 1000000) }} MHz</td>
+                            <td class="p-3">{{ signal.timestamp }}</td>
+                            <td class="p-3 font-mono">{{ signal.filepath }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <footer class="text-center mt-8 text-gray-500">
+            <p>Desenvolvido por Lucas Cardoso Gomes.</p>
+        </footer>
+    </div>
+
+    <script>
+        const toggleButton = document.getElementById('toggle-button');
+        const statusText = document.getElementById('status-text');
+        const signalsTable = document.getElementById('signals-table');
+
+        // Função para atualizar o status e a classe do texto
+        function updateStatus(status) {
+            statusText.textContent = status;
+            if (status === 'Ativo') {
+                statusText.className = 'text-xl font-bold mt-1 status-active';
+            } else {
+                statusText.className = 'text-xl font-bold mt-1 status-stopped';
+            }
+        }
+
+        // Evento do botão para ligar/desligar
+        toggleButton.addEventListener('click', async () => {
+            const response = await fetch('/scanner/toggle', { method: 'POST' });
+            const data = await response.json();
+            updateStatus(data.status);
+        });
+
+        // Função para atualizar a tabela de sinais
+        async function fetchSignals() {
+            const response = await fetch('/api/signals');
+            const signals = await response.json();
+            
+            signalsTable.innerHTML = ''; // Limpa a tabela
+            
+            if (signals.length === 0) {
+                 signalsTable.innerHTML = '<tr><td colspan="4" class="text-center p-4">Nenhuma captura registrada ainda.</td></tr>';
+            } else {
+                signals.forEach(signal => {
+                    const freqMhz = (signal.frequency / 1000000).toFixed(3);
+                    const row = `
+                        <tr class="border-b border-gray-700">
+                            <td class="p-3">${signal.target}</td>
+                            <td class="p-3">${freqMhz} MHz</td>
+                            <td class="p-3">${signal.timestamp}</td>
+                            <td class="p-3 font-mono">${signal.filepath}</td>
+                        </tr>
+                    `;
+                    signalsTable.innerHTML += row;
+                });
+            }
+        }
+        
+        // Inicializa o status na carga da página
+        updateStatus('{{ status }}');
+        
+        // Atualiza a tabela a cada 5 segundos
+        setInterval(fetchSignals, 5000);
+    </script>
+</body>
+</html>
