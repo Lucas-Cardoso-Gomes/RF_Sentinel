@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RFSentinel Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white p-4">
+  <div class="max-w-4xl mx-auto">
+    <h1 class="text-4xl font-bold mb-4">RFSentinel</h1>
+
+    <div class="mb-6">
+      <button onclick="toggleScanner()" class="bg-blue-600 hover:bg-blue-800 px-4 py-2 rounded">Ativar/Desativar Scanner</button>
+    </div>
+
+    <div id="status" class="text-green-400 font-semibold mb-6">Status: Desconhecido</div>
+
+    <div class="bg-gray-800 p-4 rounded">
+      <h2 class="text-2xl mb-2">Capturas Recentes</h2>
+      <ul id="signalList" class="list-disc ml-4"></ul>
+    </div>
+  </div>
+
+  <script>
+    async function fetchSignals() {
+      const res = await fetch('/api/signals');
+      const data = await res.json();
+      const list = document.getElementById('signalList');
+      list.innerHTML = '';
+      data.forEach(item => {
+        const li = document.createElement('li');
+        li.innerText = `${item.timestamp} - ${item.target} @ ${item.frequency} Hz`;
+        list.appendChild(li);
+      });
+    }
+
+    async function toggleScanner() {
+      const res = await fetch('/scanner/toggle');
+      const json = await res.json();
+      document.getElementById('status').innerText = 'Status: ' + (json.active ? 'Ativo' : 'Parado');
+    }
+
+    fetchSignals();
+  </script>
+</body>
+</html>
