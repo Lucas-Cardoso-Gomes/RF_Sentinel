@@ -5,9 +5,9 @@ import json
 from skyfield.api import load, EarthSatellite, Topos
 
 import tle
-from utils.scanner import real_capture
+# --- NOVIDADE: Importamos a nova função de verificação ---
+from utils.scanner import real_capture, check_hardware_status
 
-# Carrega a escala de tempo
 ts = load.timescale()
 
 def load_config():
@@ -15,14 +15,12 @@ def load_config():
     with open("config.json", "r") as f:
         return json.load(f)
 
+# ... (função get_next_pass continua a mesma) ...
 def get_next_pass(station, satellite):
-    """Calcula o início, pico e fim da próxima passagem visível."""
     now = ts.now()
     t0 = now
     t1 = ts.utc(now.utc_datetime() + datetime.timedelta(days=1))
-
     times, events = satellite.find_events(station, t0, t1, altitude_degrees=10.0)
-    
     for i in range(len(events) - 2):
         if events[i] == 0 and events[i+1] == 1 and events[i+2] == 2:
             pass_start = times[i]
@@ -31,9 +29,16 @@ def get_next_pass(station, satellite):
                 return pass_start, pass_end
     return None, None
 
-def scheduler_loop(scanner_event):
+# --- ALTERAÇÃO: A função agora recebe o dicionário de status ---
+def scheduler_loop(scanner_event, hackrf_status_dict):
     """Loop principal que agenda as capturas."""
-    print("🛰️  Agendador iniciado. Calculando próximas passagens...")
+    
+    # --- NOVIDADE: Verifica e atualiza o status do hardware ao iniciar ---
+    print("🛰️  Agendador iniciado. Verificando hardware...")
+    connected, status_text = check_hardware_status()
+    hackrf_status_dict["connected"] = connected
+    hackrf_status_dict["status_text"] = status_text
+    print(f"📡 Status do HackRF: {status_text}")
     
     config = load_config()
     station_config = config['station']

@@ -2,9 +2,8 @@
 import sys
 import os
 import threading
-import uvicorn # <-- 1. Importe o uvicorn
+import uvicorn
 
-# Adiciona o diretório raiz do projeto ao path do Python.
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from fastapi import FastAPI, Request
@@ -14,31 +13,49 @@ from fastapi.templating import Jinja2Templates
 from utils import db
 from utils.scheduler import scheduler_loop
 
-# Inicializa o banco de dados
+# --- NOVIDADE: Variável para armazenar o estado do Hardware ---
+HACKRF_STATUS = {"connected": False, "status_text": "Verificando..."}
+
 db.init_db()
 
-# Evento para controlar o scanner de forma segura
 scanner_event = threading.Event()
-scanner_event.set()  # Inicia como ativo
+scanner_event.set()
 
-# Inicia a thread do agendador
-scheduler_thread = threading.Thread(target=scheduler_loop, args=(scanner_event,))
+# --- ALTERAÇÃO: Passamos o dicionário de status para a thread ---
+scheduler_thread = threading.Thread(
+    target=scheduler_loop, args=(scanner_event, HACKRF_STATUS)
+)
 scheduler_thread.daemon = True
 scheduler_thread.start()
 
 app = FastAPI(title="RFSentinel")
-
 templates = Jinja2Templates(directory="templates")
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     """Serve a página principal com o status e os sinais."""
     signals = db.get_latest_signals(10)
-    status = "Ativo" if scanner_event.is_set() else "Parado"
+    scanner_status = "Ativo" if scanner_event.is_set() else "Parado"
     return templates.TemplateResponse(
         "index.html",
-        {"request": request, "signals": signals, "status": status},
+        {
+            "request": request,
+            "signals": signals,
+            "scanner_status": scanner_status,
+            # Passa o status inicial do HackRF para a página
+            "hackrf_status_text": HACKRF_STATUS["status_text"],
+            "hackrf_connected": HACKRF_STATUS["connected"],
+        },
     )
+
+# --- NOVO ENDPOINT ---
+@app.get("/api/status")
+def get_status():
+    """Retorna o status combinado do scanner e do hardware."""
+    return {
+        "scanner_status": "Ativo" if scanner_event.is_set() else "Parado",
+        "hackrf_status": HACKRF_STATUS,
+    }
 
 @app.get("/api/signals")
 def get_signals():
@@ -49,22 +66,13 @@ def get_signals():
 def toggle_scanner():
     """Endpoint para ativar/desativar o scanner."""
     if scanner_event.is_set():
-        scanner_event.clear()  # Pausa o scanner
+        scanner_event.clear()
         status = "Parado"
     else:
-        scanner_event.set()  # Retoma o scanner
+        scanner_event.set()
         status = "Ativo"
     return {"status": status}
 
-
-# --- INÍCIO DA ADIÇÃO ---
-# 2. Adicione este bloco no final do arquivo
 if __name__ == "__main__":
     print("Iniciando o servidor web Uvicorn...")
-    uvicorn.run(
-        "main:app",         # 'main' é o nome do arquivo (main.py), 'app' é o objeto FastAPI
-        host="127.0.0.1",   # Endereço para rodar o servidor
-        port=8000,          # Porta que você vai acessar no navegador
-        reload=True         # Reinicia o servidor automaticamente quando você salvar uma alteração no código
-    )
-# --- FIM DA ADIÇÃO ---
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

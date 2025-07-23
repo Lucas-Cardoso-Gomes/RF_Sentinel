@@ -6,14 +6,29 @@ import datetime
 from scipy.io.wavfile import write as write_wav
 import os
 import json
-
-# Importação corrigida para o formato absoluto
 from utils import db
+
+# --- NOVIDADE: Função dedicada a verificar o hardware ---
+def check_hardware_status():
+    """
+    Tenta se conectar ao HackRF e retorna um status legível.
+    Retorna: (True/False para conexão, String com a mensagem de status)
+    """
+    try:
+        # Apenas tenta encontrar o dispositivo
+        sdr = SoapySDR.Device({"driver": "hackrf"})
+        # Se não deu erro, a conexão é bem-sucedida.
+        return True, "HackRF One Conectado"
+    except Exception:
+        # Se qualquer exceção ocorrer, o dispositivo não foi encontrado.
+        return False, "HackRF One Não Encontrado ou com Erro de Driver"
+
 
 def load_config():
     """Carrega as configurações do arquivo JSON."""
     with open("config.json", "r") as f:
         return json.load(f)
+
 
 def real_capture(target_info):
     """Configura o SDR, captura o sinal e salva em WAV."""
