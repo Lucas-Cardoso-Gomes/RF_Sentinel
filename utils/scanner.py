@@ -7,21 +7,31 @@ from scipy.io.wavfile import write as write_wav
 import os
 import json
 from utils import db
+import os, sys
 
-# --- NOVIDADE: Função dedicada a verificar o hardware ---
+# Força o PATH para encontrar DLLs do Soapy
+extra = r"C:\ProgramData\radioconda\Library\bin;C:\ProgramData\radioconda\Library\lib"
+os.environ["PATH"] = extra + ";" + os.environ.get("PATH", "")
+
+# --- Função dedicada a verificar o hardware SDR ---
 def check_hardware_status():
-    """
-    Tenta se conectar ao HackRF e retorna um status legível.
-    Retorna: (True/False para conexão, String com a mensagem de status)
-    """
+    print("🧪 DEBUG: módulos SoapySDR encontrados:", SoapySDR.listModules())
+    print("🧪 DEBUG: root path:", SoapySDR.getRootPath())
     try:
-        # Apenas tenta encontrar o dispositivo
-        sdr = SoapySDR.Device({"driver": "hackrf"})
-        # Se não deu erro, a conexão é bem-sucedida.
-        return True, "HackRF One Conectado"
-    except Exception:
-        # Se qualquer exceção ocorrer, o dispositivo não foi encontrado.
-        return False, "HackRF One Não Encontrado ou com Erro de Driver"
+        available = SoapySDR.Device.enumerate()
+        print("🧪 DEBUG: Dispositivos SoapySDR disponíveis:")
+        for i, dev in enumerate(available):
+            print(f"  [{i}] {dev}")
+
+        if not available:
+            return False, "Nenhum dispositivo SDR detectado"
+
+        sdr = SoapySDR.Device(available[0])
+        driver = sdr.getDriverKey()
+        print("🧪 DEBUG: SDR aberto com driver:", driver)
+        return True, f"Dispositivo SDR detectado: {driver}"
+    except Exception as e:
+        return False, f"HackRF não encontrado: {e}"
 
 
 def load_config():
@@ -36,7 +46,12 @@ def real_capture(target_info):
     sdr_settings = config['sdr_settings']
     
     try:
-        sdr = SoapySDR.Device({"driver": "hackrf"})
+        available = SoapySDR.Device.enumerate()
+        if not available:
+            print("❌ Nenhum SDR disponível para captura.")
+            return
+
+        sdr = SoapySDR.Device(available[0])
         sdr.setSampleRate(SOAPY_SDR_RX, 0, sdr_settings['sample_rate'])
         sdr.setFrequency(SOAPY_SDR_RX, 0, target_info['frequency'])
         sdr.setGain(SOAPY_SDR_RX, 0, sdr_settings['gain'])

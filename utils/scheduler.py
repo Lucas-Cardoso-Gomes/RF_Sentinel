@@ -64,7 +64,18 @@ def scheduler_loop(scanner_event, hackrf_status_dict):
             print(f"  - Falha ao obter TLE para {target['name']}")
 
     while True:
+        # Atualiza status do hardware a cada ciclo
+        connected, status_text = check_hardware_status()
+        hackrf_status_dict["connected"] = connected
+        hackrf_status_dict["status_text"] = status_text
+
+        if not connected:
+            print(f"❌ HackRF desconectado: {status_text}. Aguardando reconexão...")
+            time.sleep(10)
+            continue
+
         if not scanner_event.is_set():
+            print("⏸️ Scanner pausado. Aguardando reativação...")
             time.sleep(10)
             continue
 

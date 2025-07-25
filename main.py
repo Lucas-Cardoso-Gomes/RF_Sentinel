@@ -2,9 +2,11 @@
 import sys
 import os
 import threading
-import uvicorn
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+
+from utils.win_dll_fix import apply as apply_win_dll_fix
+apply_win_dll_fix() 
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
@@ -74,5 +76,6 @@ def toggle_scanner():
     return {"status": status}
 
 if __name__ == "__main__":
+    import uvicorn
     print("Iniciando o servidor web Uvicorn...")
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)
