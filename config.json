@@ -44,7 +44,7 @@
       147.000,
       97.1
     ],
-    "squelch_db": -50.0,
-    "dwell_seconds": 5
+    "squelch_db": -20.0,
+    "dwell_seconds": 10
   }
 }
