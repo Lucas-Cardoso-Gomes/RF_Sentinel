@@ -6,11 +6,19 @@ DB_FILE = "signals.db"
 
 def init_db():
     """Inicializa o banco de dados e cria a tabela se não existir."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    # Adiciona a coluna image_path
+    try:
+        cursor.execute("ALTER TABLE signals ADD COLUMN image_path TEXT")
+        print("Coluna 'image_path' adicionada ao banco de dados.")
+    except sqlite3.OperationalError:
+        # A coluna já existe, ignora o erro
+        pass
+
     if not os.path.exists(DB_FILE):
         print("Criando banco de dados 'signals.db'...")
         try:
-            conn = sqlite3.connect(DB_FILE)
-            cursor = conn.cursor()
             cursor.execute(
                 """
                 CREATE TABLE signals (
@@ -18,32 +26,31 @@ def init_db():
                     target TEXT NOT NULL,
                     frequency REAL NOT NULL,
                     timestamp TEXT NOT NULL,
-                    filepath TEXT NOT NULL
+                    filepath TEXT NOT NULL,
+                    image_path TEXT
                 );
                 """
             )
             conn.commit()
-            conn.close()
             print("Banco de dados criado com sucesso.")
         except sqlite3.Error as e:
             print(f"❌ Erro ao criar o banco de dados: {e}")
+    conn.close()
 
 
 def get_db_connection():
-    """Retorna uma conexão com o banco de dados."""
+    # (sem alterações)
     conn = sqlite3.connect(DB_FILE)
-    # Permite acessar colunas pelo nome (ex: row['target'])
     conn.row_factory = sqlite3.Row
     return conn
 
-
-def insert_signal(target, frequency, timestamp, filepath):
+def insert_signal(target, frequency, timestamp, filepath, image_path=None):
     """Insere um novo sinal capturado no banco de dados."""
     try:
         conn = get_db_connection()
         conn.execute(
-            "INSERT INTO signals (target, frequency, timestamp, filepath) VALUES (?, ?, ?, ?)",
-            (target, frequency, timestamp, filepath),
+            "INSERT INTO signals (target, frequency, timestamp, filepath, image_path) VALUES (?, ?, ?, ?, ?)",
+            (target, frequency, timestamp, filepath, image_path),
         )
         conn.commit()
         conn.close()
@@ -52,14 +59,13 @@ def insert_signal(target, frequency, timestamp, filepath):
 
 
 def get_latest_signals(limit=10):
-    """Retorna os últimos N sinais capturados."""
+    # (sem alterações)
     try:
         conn = get_db_connection()
         signals = conn.execute(
             "SELECT * FROM signals ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()
         conn.close()
-        # Converte os resultados para uma lista de dicionários
         return [dict(row) for row in signals]
     except sqlite3.Error as e:
         print(f"❌ Erro no banco de dados ao buscar sinais: {e}")

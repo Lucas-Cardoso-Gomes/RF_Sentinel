@@ -55,7 +55,28 @@
 
         <div class="bg-gray-800 rounded-lg shadow-lg p-6">
             <h2 class="text-2xl font-semibold text-gray-200 mb-4">Últimas Capturas</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead>
+                        <tr class="border-b border-gray-600 text-gray-400">
+                            <th class="p-3">Alvo</th>
+                            <th class="p-3">Frequência</th>
+                            <th class="p-3">Timestamp</th>
+                            <th class="p-3">Arquivo de Áudio</th>
+                            <th class="p-3">Imagem</th>
+                        </tr>
+                    </thead>
+                    <tbody id="signals-table">
+                        </tbody>
+                </table>
+            </div>
         </div>
+
+        <div class="bg-gray-800 rounded-lg shadow-lg p-6 mt-8">
+            <h2 class="text-2xl font-semibold text-gray-200 mb-4">Waterfall (Espectro em Tempo Real)</h2>
+            <canvas id="waterfall-canvas" class="w-full h-64 bg-black rounded"></canvas>
+        </div>
+
         <footer class="text-center mt-8 text-gray-500">
             <p>Desenvolvido por Lucas Cardoso Gomes.</p>
         </footer>
@@ -65,29 +86,22 @@
         const toggleButton = document.getElementById('toggle-button');
         const scannerStatusText = document.getElementById('scanner-status-text');
         const hackrfStatusText = document.getElementById('hackrf-status-text');
-        const signalsTable = document.getElementById('signals-table');
 
-        // --- FUNÇÃO DE ATUALIZAÇÃO DE STATUS ATUALIZADA ---
         async function fetchStatus() {
             try {
                 const response = await fetch('/api/status');
                 const data = await response.json();
 
-                // Atualiza status do scanner
                 scannerStatusText.textContent = data.scanner_status;
-                if (data.scanner_status === 'Ativo') {
-                    scannerStatusText.className = 'text-xl font-bold mt-1 status-active';
-                } else {
-                    scannerStatusText.className = 'text-xl font-bold mt-1 status-stopped';
-                }
+                scannerStatusText.className = data.scanner_status === 'Ativo' 
+                    ? 'text-xl font-bold mt-1 status-active' 
+                    : 'text-xl font-bold mt-1 status-stopped';
 
-                // Atualiza status do HackRF
                 hackrfStatusText.textContent = data.hackrf_status.status_text;
-                if (data.hackrf_status.connected) {
-                    hackrfStatusText.className = 'text-xl font-bold mt-1 status-active';
-                } else {
-                    hackrfStatusText.className = 'text-xl font-bold mt-1 status-stopped';
-                }
+                hackrfStatusText.className = data.hackrf_status.connected 
+                    ? 'text-xl font-bold mt-1 status-active' 
+                    : 'text-xl font-bold mt-1 status-stopped';
+
             } catch (error) {
                 scannerStatusText.textContent = 'Erro de Conexão';
                 hackrfStatusText.textContent = 'Erro de Conexão';
@@ -97,28 +111,36 @@
         toggleButton.addEventListener('click', async () => {
             const response = await fetch('/scanner/toggle', { method: 'POST' });
             const data = await response.json();
-            scannerStatusText.textContent = data.status; // Atualiza imediatamente após o clique
-            // O fetchStatus vai corrigir a cor no próximo ciclo.
+            scannerStatusText.textContent = data.status;
         });
 
-        // Função para atualizar a tabela de sinais
         async function fetchSignals() {
             const response = await fetch('/api/signals');
             const signals = await response.json();
+            const signalsTable = document.getElementById('signals-table');
 
-            signalsTable.innerHTML = ''; // Limpa a tabela
+            signalsTable.innerHTML = '';
 
             if (signals.length === 0) {
-                signalsTable.innerHTML = '<tr><td colspan="4" class="text-center p-4">Nenhuma captura registrada ainda.</td></tr>';
+                signalsTable.innerHTML = '<tr><td colspan="5" class="text-center p-4">Nenhuma captura registrada ainda.</td></tr>';
             } else {
                 signals.forEach(signal => {
                     const freqMhz = (signal.frequency / 1000000).toFixed(3);
+                    
+                    let imageCell = '<td class="p-3">N/A</td>';
+                    if (signal.filepath && signal.filepath.includes("NOAA")) {
+                        const base_filename = signal.filepath.split('\\').pop().split('/').pop().replace('.wav', '.png');
+                        const image_path = `captures/images/${base_filename}`;
+                        imageCell = `<td class="p-3"><a href="/${image_path}" target="_blank"><img src="/${image_path}" class="h-16 w-auto hover:opacity-80 transition-opacity" alt="Imagem APT"></a></td>`;
+                    }
+
                     const row = `
-                        <tr class="border-b border-gray-700">
+                        <tr class="border-b border-gray-700 hover:bg-gray-700/50">
                             <td class="p-3">${signal.target}</td>
                             <td class="p-3">${freqMhz} MHz</td>
                             <td class="p-3">${signal.timestamp}</td>
-                            <td class="p-3 font-mono">${signal.filepath}</td>
+                            <td class="p-3 font-mono"><a href="/${signal.filepath}" download class="text-blue-400 hover:underline">${signal.filepath}</a></td>
+                            ${imageCell}
                         </tr>
                     `;
                     signalsTable.innerHTML += row;
@@ -126,12 +148,68 @@
             }
         }
 
-        // Inicializa o status na carga da página
-        updateStatus('{{ status }}');
+        const canvas = document.getElementById('waterfall-canvas');
+        const ctx = canvas.getContext('2d');
+        let tempCanvas, tempCtx;
+        
+        function initWaterfall() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            
+            tempCanvas = document.createElement('canvas');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            tempCtx = tempCanvas.getContext('2d');
+
+            const ws = new WebSocket(`ws://${window.location.host}/ws/waterfall`);
+
+            ws.onopen = () => console.log("Conexão WebSocket para Waterfall aberta.");
+
+            ws.onmessage = (event) => {
+                const fftData = JSON.parse(event.data);
+                drawWaterfallLine(fftData);
+            };
+
+            ws.onclose = () => {
+                console.log("Conexão WebSocket para Waterfall fechada.");
+                ctx.fillStyle = 'black';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = 'red';
+                ctx.font = '20px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('Conexão Perdida', canvas.width / 2, canvas.height / 2);
+            };
+
+            ws.onerror = (error) => console.error("Erro no WebSocket:", error);
+        }
+
+        function getColor(value) {
+            const minDb = -80;
+            const maxDb = -20;
+            const normalized = Math.max(0, Math.min(1, (value - minDb) / (maxDb - minDb)));
+            const hue = (1 - normalized) * 240; // 240 (blue) -> 0 (red)
+            return `hsl(${hue}, 100%, 50%)`;
+        }
+
+        function drawWaterfallLine(data) {
+            tempCtx.drawImage(canvas, 0, 0);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(tempCanvas, 0, 1);
+            const segmentWidth = canvas.width / data.length;
+            for (let i = 0; i < data.length; i++) {
+                ctx.fillStyle = getColor(data[i]);
+                ctx.fillRect(i * segmentWidth, 0, segmentWidth, 1);
+            }
+        }
+        
+        window.onload = () => {
+            fetchStatus();
+            fetchSignals();
+            initWaterfall();
+        };
 
         setInterval(fetchStatus, 5000);
         setInterval(fetchSignals, 5000);
     </script>
 </body>
-
 </html>

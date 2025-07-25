@@ -14,6 +14,13 @@ from fastapi.templating import Jinja2Templates
 
 from utils import db
 from utils.scheduler import scheduler_loop
+from fastapi.staticfiles import StaticFiles
+
+from fastapi import WebSocket, WebSocketDisconnect
+import numpy as np
+import SoapySDR
+from SoapySDR import *
+import asyncio
 
 # --- NOVIDADE: Variável para armazenar o estado do Hardware ---
 HACKRF_STATUS = {"connected": False, "status_text": "Verificando..."}
@@ -32,6 +39,8 @@ scheduler_thread.start()
 
 app = FastAPI(title="RFSentinel")
 templates = Jinja2Templates(directory="templates")
+
+app.mount("/captures", StaticFiles(directory="captures"), name="captures")
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
@@ -74,6 +83,56 @@ def toggle_scanner():
         scanner_event.set()
         status = "Ativo"
     return {"status": status}
+
+@app.websocket("/ws/waterfall")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    print("Cliente WebSocket conectado para o waterfall.")
+
+    sdr = None
+    rxStream = None
+    try:
+        # Configuração do SDR para o waterfall
+        sdr_devices = SoapySDR.Device.enumerate()
+        if not sdr_devices:
+            raise RuntimeError("Nenhum dispositivo SDR encontrado.")
+        
+        sdr = SoapySDR.Device(sdr_devices[0])
+        sdr.setSampleRate(SOAPY_SDR_RX, 0, 2.4e6)
+        sdr.setFrequency(SOAPY_SDR_RX, 0, 101.1e6) # Frequência central inicial (ex: rádio FM)
+        sdr.setGain(SOAPY_SDR_RX, 0, 30)
+
+        rxStream = sdr.setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32)
+        sdr.activateStream(rxStream)
+        
+        # Tamanho do buffer para FFT
+        fft_size = 1024
+        samples = np.zeros(fft_size, np.complex64)
+
+        while True:
+            # Lê amostras do SDR
+            sr = sdr.readStream(rxStream, [samples], len(samples))
+            
+            # Calcula a FFT e a magnitude em dB
+            fft_result = np.fft.fftshift(np.fft.fft(samples))
+            psd = np.abs(fft_result)**2
+            psd_db = 10 * np.log10(psd / (fft_size**2))
+            
+            # Envia os dados para o cliente
+            await websocket.send_json(psd_db.tolist())
+            await asyncio.sleep(0.05) # Controla a taxa de atualização
+
+    except WebSocketDisconnect:
+        print("Cliente WebSocket desconectado.")
+    except Exception as e:
+        print(f"Erro no WebSocket: {e}")
+        await websocket.close(code=1011, reason=str(e))
+    finally:
+        # Garante que o stream seja fechado
+        if sdr and rxStream:
+            print("Desativando stream do SDR.")
+            sdr.deactivateStream(rxStream)
+            sdr.closeStream(rxStream)
 
 if __name__ == "__main__":
     import uvicorn

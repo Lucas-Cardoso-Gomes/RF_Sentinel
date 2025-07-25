@@ -8,6 +8,7 @@ import os
 import json
 from utils import db
 import os, sys
+from utils import db, decoder
 
 # Força o PATH para encontrar DLLs do Soapy
 extra = r"C:\ProgramData\radioconda\Library\bin;C:\ProgramData\radioconda\Library\lib"
@@ -15,20 +16,20 @@ os.environ["PATH"] = extra + ";" + os.environ.get("PATH", "")
 
 # --- Função dedicada a verificar o hardware SDR ---
 def check_hardware_status():
-    print("🧪 DEBUG: módulos SoapySDR encontrados:", SoapySDR.listModules())
-    print("🧪 DEBUG: root path:", SoapySDR.getRootPath())
+    #print("🧪 DEBUG: módulos SoapySDR encontrados:", SoapySDR.listModules())
+    #print("🧪 DEBUG: root path:", SoapySDR.getRootPath())
     try:
         available = SoapySDR.Device.enumerate()
-        print("🧪 DEBUG: Dispositivos SoapySDR disponíveis:")
-        for i, dev in enumerate(available):
-            print(f"  [{i}] {dev}")
+        #print("🧪 DEBUG: Dispositivos SoapySDR disponíveis:")
+        #for i, dev in enumerate(available):
+        #    print(f"  [{i}] {dev}")
 
         if not available:
             return False, "Nenhum dispositivo SDR detectado"
 
         sdr = SoapySDR.Device(available[0])
         driver = sdr.getDriverKey()
-        print("🧪 DEBUG: SDR aberto com driver:", driver)
+        #print("🧪 DEBUG: SDR aberto com driver:", driver)
         return True, f"Dispositivo SDR detectado: {driver}"
     except Exception as e:
         return False, f"HackRF não encontrado: {e}"
@@ -91,3 +92,7 @@ def real_capture(target_info):
         filepath=filepath,
     )
     print(f"💾 Sinal salvo em: {filepath}")
+
+    # --- NOVIDADE: Tenta decodificar se for um satélite NOAA ---
+    if "NOAA" in target_info['name']:
+        decoder.decode_apt(filepath)
