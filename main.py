@@ -4,9 +4,7 @@ import os
 import threading
 import json
 
-# Silencia os logs do libusb
 os.environ['LIBUSB_DEBUG'] = '0'
-
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from utils.win_dll_fix import apply as apply_win_dll_fix
@@ -23,35 +21,28 @@ import asyncio
 
 from utils import db
 from utils.scheduler import scheduler_loop
-from utils.scanner import real_capture # Importamos para a captura manual
+from utils.scanner import real_capture
+from utils.sdr_manager import sdr_manager # Importa a instância do gerenciador
 
-# --- Dicionário de estado compartilhado para comunicação entre threads ---
 SHARED_STATUS = {
     "hackrf_status": {"connected": False, "status_text": "Verificando..."},
-    "next_pass": None, # Ex: {'name': 'NOAA 19', 'start_utc': '...'}
-    "scheduler_log": [], # Lista das últimas mensagens de log
-    "manual_capture_active": False # Flag para captura manual
+    "next_pass": None,
+    "scheduler_log": [],
+    "manual_capture_active": False
 }
 
 db.init_db()
-
 scanner_event = threading.Event()
 scanner_event.set()
 
-# Passa o dicionário de status completo para a thread do agendador
-scheduler_thread = threading.Thread(
-    target=scheduler_loop, args=(scanner_event, SHARED_STATUS)
-)
+scheduler_thread = threading.Thread(target=scheduler_loop, args=(scanner_event, SHARED_STATUS))
 scheduler_thread.daemon = True
 scheduler_thread.start()
 
 app = FastAPI(title="RFSentinel")
 templates = Jinja2Templates(directory="templates")
-
-# Monta a pasta de capturas para que o navegador possa acessar os arquivos
 app.mount("/captures", StaticFiles(directory="captures"), name="captures")
 
-# --- LÓGICA PARA CAPTURA MANUAL ---
 def run_manual_capture(target_info):
     SHARED_STATUS["manual_capture_active"] = True
     print(f"Iniciando captura manual para: {target_info}")
@@ -70,23 +61,16 @@ async def manual_capture_endpoint(request: Request):
         "frequency": int(float(data.get("frequency_mhz", 0)) * 1e6),
         "capture_duration_seconds": int(data.get("duration_sec", 10))
     }
-
-    # Inicia a captura em uma nova thread para não bloquear a API
     capture_thread = threading.Thread(target=run_manual_capture, args=(target_info,))
     capture_thread.start()
-
     return {"status": "Captura manual iniciada."}
-
-# --- ENDPOINTS DA API E DA INTERFACE ---
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
-    """Serve a página principal do dashboard."""
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/api/status")
 def get_status():
-    """Retorna o status combinado de todo o sistema para o frontend."""
     return {
         "scanner_status": "Ativo" if scanner_event.is_set() else "Parado",
         "hackrf_status": SHARED_STATUS["hackrf_status"],
@@ -97,64 +81,53 @@ def get_status():
 
 @app.get("/api/signals")
 def get_signals():
-    """Fornece a lista das últimas capturas do banco de dados."""
     return db.get_latest_signals(10)
 
 @app.post("/scanner/toggle")
 def toggle_scanner():
-    """Ativa ou desativa o agendador de satélites."""
-    if scanner_event.is_set():
-        scanner_event.clear()
-        status = "Parado"
-    else:
-        scanner_event.set()
-        status = "Ativo"
-    return {"status": status}
+    if scanner_event.is_set(): scanner_event.clear()
+    else: scanner_event.set()
+    return {"status": "Ativo" if scanner_event.is_set() else "Parado"}
 
 @app.websocket("/ws/waterfall")
 async def websocket_endpoint(websocket: WebSocket):
-    """Endpoint WebSocket para o waterfall interativo."""
     await websocket.accept()
-    sdr = None
+    sdr = sdr_manager.acquire_device()
+    if not sdr:
+        await websocket.close(code=1011, reason="Não foi possível adquirir o dispositivo SDR.")
+        return
+
     rxStream = None
     try:
-        sdr_devices = SoapySDR.Device.enumerate()
-        hackrf_device = next((dev for dev in sdr_devices if 'driver' in dev and dev['driver'] == 'hackrf'), None)
-        
-        if not hackrf_device: raise RuntimeError("HackRF não encontrado.")
-        
-        sdr = SoapySDR.Device(hackrf_device)
         sdr.setSampleRate(SOAPY_SDR_RX, 0, 2.4e6)
         sdr.setFrequency(SOAPY_SDR_RX, 0, 101.1e6)
         sdr.setGain(SOAPY_SDR_RX, 0, 32)
-
         rxStream = sdr.setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32)
         sdr.activateStream(rxStream)
+        sdr_manager.active_stream = rxStream
         
         fft_size = 1024
         samples = np.zeros(fft_size, np.complex64)
 
-        async def rx_loop(): # Loop que lê dados do SDR e envia para o cliente
+        async def rx_loop():
             while True:
                 sdr.readStream(rxStream, [samples], len(samples))
                 fft_result = np.fft.fftshift(np.fft.fft(samples))
                 psd = np.abs(fft_result)**2
-                psd_db = 10 * np.log10(psd / (fft_size**2))
+                # Adiciona um valor mínimo para evitar o log de zero
+                psd_db = 10 * np.log10(psd / (fft_size**2) + 1e-12)
                 await websocket.send_json(psd_db.tolist())
                 await asyncio.sleep(0.05)
 
-        async def tx_loop(): # Loop que recebe comandos do cliente e atualiza o SDR
+        async def tx_loop():
             while True:
                 message = await websocket.receive_text()
                 data = json.loads(message)
                 if 'frequency' in data:
-                    print(f"Waterfall: Mudando frequência para {data['frequency']/1e6:.2f} MHz")
                     sdr.setFrequency(SOAPY_SDR_RX, 0, float(data['frequency']))
                 if 'gain' in data:
-                    print(f"Waterfall: Mudando ganho para {data['gain']} dB")
                     sdr.setGain(SOAPY_SDR_RX, 0, int(data['gain']))
-
-        # Executa as duas tarefas concorrentemente
+        
         await asyncio.gather(rx_loop(), tx_loop())
 
     except WebSocketDisconnect:
@@ -165,7 +138,8 @@ async def websocket_endpoint(websocket: WebSocket):
         if sdr and rxStream:
             sdr.deactivateStream(rxStream)
             sdr.closeStream(rxStream)
-            print("Stream do SDR para o waterfall foi fechado.")
+            sdr_manager.active_stream = None
+        sdr_manager.release_device()
 
 if __name__ == "__main__":
     import uvicorn
