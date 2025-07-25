@@ -6,6 +6,7 @@ import datetime
 from scipy.io import wavfile
 import os
 import json
+import time
 from utils import db, decoder
 
 # Força o PATH para encontrar DLLs do Soapy, se necessário
@@ -17,8 +18,6 @@ def get_hackrf_device():
     """Encontra e retorna o primeiro dispositivo HackRF disponível."""
     devices = SoapySDR.Device.enumerate()
     for dev in devices:
-        # --- CORREÇÃO APLICADA AQUI ---
-        # Acessa a chave 'driver' usando a sintaxe de dicionário
         if "driver" in dev and dev["driver"] == "hackrf":
             print(f"✔️ Dispositivo HackRF encontrado: {dev}")
             return dev
@@ -31,8 +30,6 @@ def check_hardware_status():
         hackrf_device = get_hackrf_device()
         if not hackrf_device:
             return False, "HackRF One Não Encontrado"
-        
-        # Usa os argumentos do dispositivo encontrado para abri-lo
         sdr = SoapySDR.Device(hackrf_device)
         driver = sdr.getDriverKey()
         return True, f"HackRF One Conectado ({driver})"
@@ -44,8 +41,70 @@ def load_config():
     with open("config.json", "r") as f:
         return json.load(f)
 
+# --- NOVA FUNÇÃO PARA MONITORAMENTO ---
+def monitor_amateur_radio(duration_seconds: int, scanner_event):
+    """Escaneia frequências de rádio amador por um período definido."""
+    config = load_config().get('amateur_radio_monitoring', {})
+    if not config.get('enabled', False):
+        print("-> Monitoramento de rádio amador desativado na configuração.")
+        time.sleep(duration_seconds)
+        return
+
+    print(f"📻 Entrando em modo de monitoramento de rádio amador por ~{duration_seconds / 60:.0f} minutos.")
+    
+    sdr = None
+    rxStream = None
+    start_time = time.time()
+    
+    try:
+        hackrf_device = get_hackrf_device()
+        if not hackrf_device:
+            print("❌ HackRF não encontrado para iniciar o monitoramento.")
+            time.sleep(duration_seconds)
+            return
+
+        sdr = SoapySDR.Device(hackrf_device)
+        sdr.setSampleRate(SOAPY_SDR_RX, 0, 1e6) # Taxa de amostragem menor para scan
+        sdr.setGain(SOAPY_SDR_RX, 0, 35)
+
+        rxStream = sdr.setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32)
+        sdr.activateStream(rxStream)
+
+        samples = np.zeros(1024, np.complex64)
+        frequencies = [f * 1e6 for f in config['frequencies_mhz']] # Converte para Hz
+        squelch_threshold = 10**(config['squelch_db'] / 10)
+
+        while time.time() - start_time < duration_seconds:
+            if not scanner_event.is_set():
+                print("⏸️ Monitoramento pausado pelo usuário.")
+                scanner_event.wait()
+                print("▶️ Monitoramento reativado.")
+
+            for freq in frequencies:
+                sdr.setFrequency(SOAPY_SDR_RX, 0, freq)
+                sdr.readStream(rxStream, [samples], len(samples), timeoutUs=int(0.01 * 1e6))
+                
+                power = np.mean(np.abs(samples)**2)
+                
+                if power > squelch_threshold:
+                    print(f"    -> Sinal detectado em {freq/1e6:.3f} MHz! Ouvindo por {config['dwell_seconds']}s...")
+                    time.sleep(config['dwell_seconds'])
+                
+                # Verifica o tempo restante após cada frequência
+                if time.time() - start_time >= duration_seconds:
+                    break
+        
+    except Exception as e:
+        print(f"❌ Erro durante o monitoramento de rádio amador: {e}")
+    finally:
+        if sdr and rxStream:
+            sdr.deactivateStream(rxStream)
+            sdr.closeStream(rxStream)
+        print("📻 Saindo do modo de monitoramento.")
+
+
 def real_capture(target_info):
-    """Configura o SDR, captura o sinal e salva em WAV."""
+    # (Esta função permanece a mesma da versão anterior)
     config = load_config()
     sdr_settings = config['sdr_settings']
     
@@ -73,7 +132,7 @@ def real_capture(target_info):
 
     except Exception as e:
         print(f"❌ Erro durante a captura com SDR: {e}")
-        return # Retorna para evitar processar um sinal vazio
+        return
     finally:
         if sdr and rxStream:
             sdr.deactivateStream(rxStream)
@@ -83,7 +142,6 @@ def real_capture(target_info):
         print("❌ Captura falhou, nenhum dado foi lido do SDR.")
         return
 
-    # Processamento e salvamento do arquivo
     samples_real = (np.real(samples) * 32767).astype(np.int16)
     samples_imag = (np.imag(samples) * 32767).astype(np.int16)
     

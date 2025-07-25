@@ -10,28 +10,41 @@
   },
   "targets": [
     {
-      "name": "ISS",
-      "tle_url": "https://www.celestrak.org/NORAD/elements/gp.php?NAME=ISS%20(ZARYA)&FORMAT=TLE",
+      "name": "ISS (ZARYA)",
+      "tle_url": "https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle",
       "frequency": 145800000,
       "capture_duration_seconds": 60
     },
     {
       "name": "NOAA 15",
-      "tle_url": "https://www.celestrak.org/NORAD/elements/gp.php?NAME=NOAA%2015&FORMAT=TLE",
+      "tle_url": "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle",
       "frequency": 137620000,
       "capture_duration_seconds": 300
     },
     {
       "name": "NOAA 18",
-      "tle_url": "https://www.celestrak.org/NORAD/elements/gp.php?NAME=NOAA%2018&FORMAT=TLE",
+      "tle_url": "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle",
       "frequency": 137912500,
       "capture_duration_seconds": 300
     },
     {
       "name": "NOAA 19",
-      "tle_url": "https://www.celestrak.org/NORAD/elements/gp.php?NAME=NOAA%2019&FORMAT=TLE",
+      "tle_url": "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle",
       "frequency": 137100000,
       "capture_duration_seconds": 300
     }
-  ]
+  ],
+  "amateur_radio_monitoring": {
+    "enabled": true,
+    "frequencies_mhz": [
+      146.520, 
+      146.610, 
+      146.790, 
+      146.850, 
+      147.000,
+      97.1
+    ],
+    "squelch_db": -50.0,
+    "dwell_seconds": 5
+  }
 }
