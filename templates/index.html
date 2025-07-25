@@ -7,38 +7,11 @@
     <title>RFSentinel - Painel de Controle</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body {
-            background-color: #111827;
-            color: #d1d5db;
-        }
-
-        .status-active {
-            color: #22c55e;
-            text-shadow: 0 0 8px #22c55e;
-        }
-
-        .status-stopped {
-            color: #ef4444;
-            text-shadow: 0 0 8px #ef4444;
-        }
-
-        .status-monitoring {
-            color: #38bdf8;
-            text-shadow: 0 0 8px #38bdf8;
-        }
-
-        #activity-log {
-            height: 150px;
-            background-color: #0c121e;
-            border: 1px solid #374151;
-            border-radius: 0.5rem;
-            padding: 0.75rem;
-            font-family: monospace;
-            font-size: 0.8rem;
-            overflow-y: scroll;
-            white-space: pre-wrap;
-            color: #9ca3af;
-        }
+        body { background-color: #111827; color: #d1d5db; }
+        .status-active { color: #22c55e; text-shadow: 0 0 8px #22c55e; }
+        .status-stopped { color: #ef4444; text-shadow: 0 0 8px #ef4444; }
+        .status-monitoring { color: #38bdf8; text-shadow: 0 0 8px #38bdf8; }
+        #activity-log { height: 150px; background-color: #0c121e; border: 1px solid #374151; border-radius: 0.5rem; padding: 0.75rem; font-family: monospace; font-size: 0.8rem; overflow-y: scroll; white-space: pre-wrap; color: #9ca3af; }
     </style>
 </head>
 
@@ -62,32 +35,26 @@
                             <h2 class="text-2xl font-semibold text-gray-200">Scanner de Satélites</h2>
                             <p id="scanner-status-text" class="text-xl font-bold mt-1">Verificando...</p>
                         </div>
-                        <button id="toggle-button"
-                            class="px-6 py-2 font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">Ativar/Parar</button>
+                        <button id="toggle-button" class="px-6 py-2 font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">Ativar/Parar</button>
                     </div>
                 </div>
-
+                
                 <div class="bg-gray-800 rounded-lg shadow-lg p-6">
                     <h2 class="text-2xl font-semibold text-gray-200 mb-4">Captura Manual</h2>
                     <div class="space-y-4">
                         <div>
                             <label for="capture-name" class="text-sm font-medium text-gray-400">Nome da Captura</label>
-                            <input type="text" id="capture-name" placeholder="Ex: Rádio local"
-                                class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                            <input type="text" id="capture-name" placeholder="Ex: Rádio local" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
                         </div>
                         <div>
                             <label for="capture-freq" class="text-sm font-medium text-gray-400">Frequência (MHz)</label>
-                            <input type="number" id="capture-freq" value="146.520" step="0.001"
-                                class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                            <input type="number" id="capture-freq" value="146.520" step="0.001" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
                         </div>
                         <div>
-                            <label for="capture-duration" class="text-sm font-medium text-gray-400">Duração
-                                (segundos)</label>
-                            <input type="number" id="capture-duration" value="30"
-                                class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                            <label for="capture-duration" class="text-sm font-medium text-gray-400">Duração (segundos)</label>
+                            <input type="number" id="capture-duration" value="30" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
                         </div>
-                        <button id="manual-capture-button"
-                            class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                        <button id="manual-capture-button" class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
                             Gravar
                         </button>
                     </div>
@@ -95,12 +62,10 @@
             </div>
 
             <div class="lg:col-span-2 space-y-8">
-                <div class="bg-gray-800 rounded-lg shadow-lg p-6">
+                 <div class="bg-gray-800 rounded-lg shadow-lg p-6">
                     <h2 class="text-2xl font-semibold text-gray-200 mb-2">Próxima Captura Agendada</h2>
-                    <p class="text-lg text-gray-400">Alvo: <span id="next-target"
-                            class="font-bold text-gray-200">Nenhum</span></p>
-                    <p class="text-lg text-gray-400">Horário (UTC): <span id="next-time"
-                            class="font-bold text-gray-200">--:--:--</span></p>
+                    <p class="text-lg text-gray-400">Alvo: <span id="next-target" class="font-bold text-gray-200">Nenhum</span></p>
+                    <p class="text-lg text-gray-400">Horário (UTC): <span id="next-time" class="font-bold text-gray-200">--:--:--</span></p>
                     <p class="text-2xl text-cyan-400 mt-2" id="next-countdown">Aguardando...</p>
                 </div>
                 <div class="bg-gray-800 rounded-lg shadow-lg p-6">
@@ -114,17 +79,14 @@
                         <div class="flex items-center space-x-4">
                             <div>
                                 <label for="wf-freq" class="text-sm text-gray-400">Freq. (MHz)</label>
-                                <input type="number" id="wf-freq" value="101.1" step="0.1"
-                                    class="bg-gray-700 text-white rounded px-2 py-1 w-24">
+                                <input type="number" id="wf-freq" value="101.1" step="0.1" class="bg-gray-700 text-white rounded px-2 py-1 w-24">
                             </div>
                             <div>
                                 <label for="wf-gain" class="text-sm text-gray-400">Ganho</label>
-                                <input type="range" id="wf-gain" min="0" max="40" step="8" value="32"
-                                    class="align-middle">
+                                <input type="range" id="wf-gain" min="0" max="40" step="8" value="32" class="align-middle">
                                 <span id="wf-gain-label" class="text-sm text-gray-300">32</span>
                             </div>
-                            <button id="wf-update"
-                                class="px-4 py-1 bg-indigo-600 hover:bg-indigo-700 rounded text-white font-semibold">Aplicar</button>
+                            <button id="wf-update" class="px-4 py-1 bg-indigo-600 hover:bg-indigo-700 rounded text-white font-semibold">Aplicar</button>
                         </div>
                     </div>
                     <canvas id="waterfall-canvas" class="w-full h-64 bg-black rounded"></canvas>
@@ -182,19 +144,19 @@
             try {
                 const response = await fetch('/api/status');
                 const data = await response.json();
-
+                
                 scannerStatusText.textContent = data.scanner_status;
                 scannerStatusText.className = `text-xl font-bold mt-1 ${data.scanner_status === 'Ativo' ? 'status-active' : 'status-stopped'}`;
-
+                
                 hackrfStatusText.textContent = data.hackrf_status.status_text;
                 hackrfStatusText.className = `text-xl font-bold mt-1 ${data.hackrf_status.connected ? 'status-active' : 'status-stopped'}`;
 
-                if (data.scheduler_log) {
+                if(data.scheduler_log) {
                     activityLog.innerHTML = data.scheduler_log.join('\n');
                     activityLog.scrollTop = activityLog.scrollHeight;
                 }
 
-                if (data.next_pass) {
+                if(data.next_pass) {
                     const pass = data.next_pass;
                     nextTargetEl.textContent = pass.name;
                     const startTime = new Date(pass.start_utc);
@@ -230,7 +192,7 @@
                     signals.forEach(signal => {
                         const freqMhz = (signal.frequency / 1000000).toFixed(3);
                         let imageCell = '<td class="p-3">N/A</td>';
-
+                        
                         if (signal.filepath && signal.filepath.toLowerCase().includes("noaa")) {
                             const base_filename = signal.filepath.split(/[\\\/]/).pop().replace('.wav', '.png');
                             const image_path = `captures/images/${base_filename}`;
@@ -238,18 +200,15 @@
                         }
 
                         const row = `
-    <tr class="border-b border-gray-700 hover:bg-gray-700/50">
-        <td class="p-3">${signal.target}</td>
-        <td class="p-3">${freqMhz} MHz</td>
-        <td class="p-3">${(signal.timestamp || '').replace('_', ' ')}</td>
-        
-        <td class="p-3 text-gray-400">${signal.target_info ? signal.target_info.capture_duration_seconds + 's' : '--'}</td>
-
-        <td class="p-3 font-mono"><a href="/${signal.filepath}" download class="text-blue-400 hover:underline">${signal.filepath.split(/[\\\/]/).pop()}</a></td>
-        ${imageCell}
-        <td class="p-3"><a href="#" class="text-indigo-400 hover:underline">Analisar</a></td>
-    </tr>
-`;
+                            <tr class="border-b border-gray-700 hover:bg-gray-700/50">
+                                <td class="p-3">${signal.target}</td>
+                                <td class="p-3">${freqMhz} MHz</td>
+                                <td class="p-3">${(signal.timestamp || '').replace('_', ' ')}</td>
+                                <td class="p-3 font-mono"><a href="/${signal.filepath}" download class="text-blue-400 hover:underline">${signal.filepath.split(/[\\\/]/).pop()}</a></td>
+                                ${imageCell}
+                                <td class="p-3"><a href="#" class="text-indigo-400 hover:underline">Analisar</a></td>
+                            </tr>
+                        `;
                         signalsTable.innerHTML += row;
                     });
                 }
@@ -283,16 +242,29 @@
         }
 
         function connectWebSocket() {
-            if (ws) ws.close();
+            if (ws && ws.readyState !== WebSocket.CLOSED) {
+                ws.close();
+            }
             ws = new WebSocket(`ws://${window.location.host}/ws/waterfall`);
             ws.onopen = () => console.log("WebSocket para Waterfall conectado.");
             ws.onmessage = (event) => drawWaterfallLine(JSON.parse(event.data));
-            ws.onclose = () => {
-                ctx.fillStyle = 'red';
-                ctx.font = '20px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText('Conexão Perdida', canvas.width / 2, canvas.height / 2);
+            ws.onclose = (event) => {
+                console.log(`WebSocket desconectado (código: ${event.code}).`);
+                if (event.code === 1012) { // Desconexão por captura prioritária
+                    ctx.fillStyle = 'orange';
+                    ctx.font = '20px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('SDR em uso para captura. Reconectando...', canvas.width / 2, canvas.height / 2);
+                    setTimeout(connectWebSocket, 15000); 
+                } else if (event.code !== 1000) { // Outro erro
+                    ctx.fillStyle = 'red';
+                    ctx.font = '20px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Conexão Perdida. Tentando reconectar...', canvas.width / 2, canvas.height / 2);
+                    setTimeout(connectWebSocket, 5000);
+                }
             };
+            ws.onerror = (error) => console.error("Erro no WebSocket:", error);
         }
 
         function drawWaterfallLine(data) {
@@ -306,10 +278,10 @@
                 ctx.fillRect(i * segmentWidth, 0, Math.ceil(segmentWidth), 1);
             }
         }
-
+        
         // --- Event Listeners e Inicialização ---
         toggleButton.addEventListener('click', () => fetch('/scanner/toggle', { method: 'POST' }));
-
+        
         manualCaptureButton.addEventListener('click', async () => {
             manualCaptureButton.disabled = true;
             try {
@@ -328,9 +300,9 @@
 
         wfUpdateButton.addEventListener('click', () => {
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    frequency: parseFloat(wfFreqInput.value) * 1e6,
-                    gain: parseInt(wfGainInput.value)
+                ws.send(JSON.stringify({ 
+                    frequency: parseFloat(wfFreqInput.value) * 1e6, 
+                    gain: parseInt(wfGainInput.value) 
                 }));
             }
         });
@@ -345,12 +317,13 @@
         };
 
         window.onresize = () => {
-            canvas.width = canvas.offsetWidth;
-            canvas.height = canvas.offsetHeight;
-            tempCanvas.width = canvas.width;
-            tempCanvas.height = canvas.height;
+            if(canvas && tempCanvas) {
+                canvas.width = canvas.offsetWidth;
+                canvas.height = canvas.offsetHeight;
+                tempCanvas.width = canvas.width;
+                tempCanvas.height = canvas.height;
+            }
         };
     </script>
 </body>
-
 </html>

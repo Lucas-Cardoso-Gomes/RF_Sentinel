@@ -4,7 +4,9 @@ import os
 import threading
 import json
 
+# Silencia os logs do libusb
 os.environ['LIBUSB_DEBUG'] = '0'
+
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from utils.win_dll_fix import apply as apply_win_dll_fix
@@ -22,8 +24,13 @@ import asyncio
 from utils import db
 from utils.scheduler import scheduler_loop
 from utils.scanner import real_capture
-from utils.sdr_manager import sdr_manager # Importa a instância do gerenciador
+from utils.sdr_manager import sdr_manager
 
+# --- NOVIDADE: Evento de controle para o waterfall (o "semáforo") ---
+waterfall_event = threading.Event()
+waterfall_event.set() # Começa "verde" (permitido rodar)
+
+# --- Dicionário de estado compartilhado para comunicação entre threads ---
 SHARED_STATUS = {
     "hackrf_status": {"connected": False, "status_text": "Verificando..."},
     "next_pass": None,
@@ -35,7 +42,10 @@ db.init_db()
 scanner_event = threading.Event()
 scanner_event.set()
 
-scheduler_thread = threading.Thread(target=scheduler_loop, args=(scanner_event, SHARED_STATUS))
+# Passa o evento do waterfall para a thread do agendador
+scheduler_thread = threading.Thread(
+    target=scheduler_loop, args=(scanner_event, SHARED_STATUS, waterfall_event)
+)
 scheduler_thread.daemon = True
 scheduler_thread.start()
 
@@ -45,9 +55,11 @@ app.mount("/captures", StaticFiles(directory="captures"), name="captures")
 
 def run_manual_capture(target_info):
     SHARED_STATUS["manual_capture_active"] = True
+    waterfall_event.clear() # Pausa o waterfall
     print(f"Iniciando captura manual para: {target_info}")
     real_capture(target_info)
     print("Captura manual finalizada.")
+    waterfall_event.set() # Libera o waterfall
     SHARED_STATUS["manual_capture_active"] = False
 
 @app.post("/api/capture/manual")
@@ -92,11 +104,17 @@ def toggle_scanner():
 @app.websocket("/ws/waterfall")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    
+    # Adquire o dispositivo SOMENTE se o semáforo estiver verde
+    if not waterfall_event.is_set():
+        await websocket.close(code=1011, reason="SDR está em uso para uma captura prioritária.")
+        return
+
     sdr = sdr_manager.acquire_device()
     if not sdr:
         await websocket.close(code=1011, reason="Não foi possível adquirir o dispositivo SDR.")
         return
-
+    
     rxStream = None
     try:
         sdr.setSampleRate(SOAPY_SDR_RX, 0, 2.4e6)
@@ -111,11 +129,15 @@ async def websocket_endpoint(websocket: WebSocket):
 
         async def rx_loop():
             while True:
+                if not waterfall_event.is_set():
+                    print("Waterfall: Recebeu sinal para pausar. Fechando conexão.")
+                    await websocket.close(code=1012, reason="SDR requisitado para captura.")
+                    break
+                
                 sdr.readStream(rxStream, [samples], len(samples))
                 fft_result = np.fft.fftshift(np.fft.fft(samples))
                 psd = np.abs(fft_result)**2
-                # Adiciona um valor mínimo para evitar o log de zero
-                psd_db = 10 * np.log10(psd / (fft_size**2) + 1e-12)
+                psd_db = 10 * np.log10(psd / (fft_size**2) + 1e-12) # Evita log de zero
                 await websocket.send_json(psd_db.tolist())
                 await asyncio.sleep(0.05)
 
