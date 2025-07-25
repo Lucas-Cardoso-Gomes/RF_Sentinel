@@ -3,6 +3,9 @@ import sys
 import os
 import threading
 
+# --- NOVIDADE: Adicione esta linha para silenciar os logs do libusb ---
+os.environ['LIBUSB_DEBUG'] = '0'
+
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from utils.win_dll_fix import apply as apply_win_dll_fix
@@ -22,7 +25,7 @@ import SoapySDR
 from SoapySDR import *
 import asyncio
 
-# --- NOVIDADE: Variável para armazenar o estado do Hardware ---
+# --- Variável para armazenar o estado do Hardware ---
 HACKRF_STATUS = {"connected": False, "status_text": "Verificando..."}
 
 db.init_db()
@@ -30,7 +33,7 @@ db.init_db()
 scanner_event = threading.Event()
 scanner_event.set()
 
-# --- ALTERAÇÃO: Passamos o dicionário de status para a thread ---
+# --- Passamos o dicionário de status para a thread ---
 scheduler_thread = threading.Thread(
     target=scheduler_loop, args=(scanner_event, HACKRF_STATUS)
 )
@@ -53,13 +56,11 @@ async def read_root(request: Request):
             "request": request,
             "signals": signals,
             "scanner_status": scanner_status,
-            # Passa o status inicial do HackRF para a página
             "hackrf_status_text": HACKRF_STATUS["status_text"],
             "hackrf_connected": HACKRF_STATUS["connected"],
         },
     )
 
-# --- NOVO ENDPOINT ---
 @app.get("/api/status")
 def get_status():
     """Retorna o status combinado do scanner e do hardware."""
@@ -92,35 +93,29 @@ async def websocket_endpoint(websocket: WebSocket):
     sdr = None
     rxStream = None
     try:
-        # Configuração do SDR para o waterfall
         sdr_devices = SoapySDR.Device.enumerate()
         if not sdr_devices:
             raise RuntimeError("Nenhum dispositivo SDR encontrado.")
         
         sdr = SoapySDR.Device(sdr_devices[0])
         sdr.setSampleRate(SOAPY_SDR_RX, 0, 2.4e6)
-        sdr.setFrequency(SOAPY_SDR_RX, 0, 101.1e6) # Frequência central inicial (ex: rádio FM)
+        sdr.setFrequency(SOAPY_SDR_RX, 0, 101.1e6)
         sdr.setGain(SOAPY_SDR_RX, 0, 30)
 
         rxStream = sdr.setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32)
         sdr.activateStream(rxStream)
         
-        # Tamanho do buffer para FFT
         fft_size = 1024
         samples = np.zeros(fft_size, np.complex64)
 
         while True:
-            # Lê amostras do SDR
             sr = sdr.readStream(rxStream, [samples], len(samples))
-            
-            # Calcula a FFT e a magnitude em dB
             fft_result = np.fft.fftshift(np.fft.fft(samples))
             psd = np.abs(fft_result)**2
             psd_db = 10 * np.log10(psd / (fft_size**2))
             
-            # Envia os dados para o cliente
             await websocket.send_json(psd_db.tolist())
-            await asyncio.sleep(0.05) # Controla a taxa de atualização
+            await asyncio.sleep(0.05)
 
     except WebSocketDisconnect:
         print("Cliente WebSocket desconectado.")
@@ -128,7 +123,6 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"Erro no WebSocket: {e}")
         await websocket.close(code=1011, reason=str(e))
     finally:
-        # Garante que o stream seja fechado
         if sdr and rxStream:
             print("Desativando stream do SDR.")
             sdr.deactivateStream(rxStream)

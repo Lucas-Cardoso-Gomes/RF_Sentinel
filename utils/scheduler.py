@@ -5,7 +5,7 @@ import json
 from skyfield.api import load, EarthSatellite, Topos
 
 import tle
-# --- NOVIDADE: Importamos a nova função de verificação ---
+# Importamos a nova função de verificação
 from utils.scanner import real_capture, check_hardware_status
 
 ts = load.timescale()
@@ -15,25 +15,27 @@ def load_config():
     with open("config.json", "r") as f:
         return json.load(f)
 
-# ... (função get_next_pass continua a mesma) ...
 def get_next_pass(station, satellite):
+    """Calcula a próxima passagem visível de um satélite."""
     now = ts.now()
     t0 = now
+    # Procura por passagens nas próximas 24 horas
     t1 = ts.utc(now.utc_datetime() + datetime.timedelta(days=1))
+    
     times, events = satellite.find_events(station, t0, t1, altitude_degrees=10.0)
+    
+    # Itera pelos eventos para encontrar a primeira passagem completa (nascer, culminar, se pôr)
     for i in range(len(events) - 2):
         if events[i] == 0 and events[i+1] == 1 and events[i+2] == 2:
             pass_start = times[i]
-            pass_end = times[i+2]
+            # Garante que a passagem encontrada está no futuro
             if pass_start.utc_datetime() > datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc):
-                return pass_start, pass_end
+                return pass_start, times[i+2]
     return None, None
 
-# --- ALTERAÇÃO: A função agora recebe o dicionário de status ---
 def scheduler_loop(scanner_event, hackrf_status_dict):
     """Loop principal que agenda as capturas."""
     
-    # --- NOVIDADE: Verifica e atualiza o status do hardware ao iniciar ---
     print("🛰️  Agendador iniciado. Verificando hardware...")
     connected, status_text = check_hardware_status()
     hackrf_status_dict["connected"] = connected
@@ -56,6 +58,7 @@ def scheduler_loop(scanner_event, hackrf_status_dict):
         if tle_data:
             print(f"  - TLE para {target['name']} OK")
             lines = tle_data.strip().splitlines()
+            # Lida com formatos de TLE de 2 ou 3 linhas
             if len(lines) >= 3:
                 satellites[target['name']] = EarthSatellite(lines[1], lines[2], lines[0], ts)
             else:
@@ -63,8 +66,14 @@ def scheduler_loop(scanner_event, hackrf_status_dict):
         else:
             print(f"  - Falha ao obter TLE para {target['name']}")
 
+    # Se nenhum TLE pôde ser carregado, faz uma pausa longa
+    if not satellites:
+        print("❌ Nenhum dado TLE pôde ser carregado. Verifique a conexão e as URLs.")
+        print("   Tentando novamente em 15 minutos...")
+        time.sleep(900)
+
     while True:
-        # Atualiza status do hardware a cada ciclo
+        # Atualiza o status do hardware a cada ciclo
         connected, status_text = check_hardware_status()
         hackrf_status_dict["connected"] = connected
         hackrf_status_dict["status_text"] = status_text
@@ -92,30 +101,30 @@ def scheduler_loop(scanner_event, hackrf_status_dict):
                     next_pass_time = start
                     target_for_next_pass = next((t for t in targets if t['name'] == name), None)
 
-        # --- INÍCIO DA CORREÇÃO ---
-        # Verificação explícita para o objeto Time antes de usá-lo.
         if next_pass_time is not None and target_for_next_pass is not None:
-        # --- FIM DA CORREÇÃO ---
             wait_seconds = (next_pass_time.utc_datetime() - datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc)).total_seconds()
+            
             if wait_seconds > 0:
                 print(f"\n✅ Próxima captura agendada para {target_for_next_pass['name']}.")
                 print(f"   Aguardando {int(wait_seconds // 60)} minutos e {int(wait_seconds % 60)} segundos...")
                 
+                # Loop de espera que pode ser interrompido
                 sleep_end_time = time.time() + wait_seconds
                 while time.time() < sleep_end_time:
                     if not scanner_event.is_set():
                         print("\n⏸️  Scanner pausado pelo usuário. Agendamento em espera.")
-                        scanner_event.wait()
+                        scanner_event.wait() # Pausa a thread até o evento ser reativado
                         print("▶️  Scanner reativado. Retomando contagem...")
+                        # Recalcula o tempo de espera restante
                         sleep_end_time = time.time() + (next_pass_time.utc_datetime() - datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc)).total_seconds()
                     time.sleep(1)
 
             # Garante que a captura só aconteça se o tempo de espera tiver passado
-            if wait_seconds <= 0:
+            if wait_seconds <= 1: # Pequena margem para evitar pular capturas
                 print(f"\n📡 Capturando passagem de {target_for_next_pass['name']} agora!")
                 real_capture(target_for_next_pass)
                 print("✅ Captura finalizada. Procurando a próxima passagem.")
-                time.sleep(10) # Pequena pausa para evitar loops rápidos
+                time.sleep(10) # Pausa para evitar loops rápidos
             
         else:
             print("Nenhuma passagem encontrada nas próximas 24 horas. Verificando novamente em 1 hora.")
