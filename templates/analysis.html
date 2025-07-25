@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Análise de Sinal - RFSentinel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js" charset="utf-8"></script>
+    <style>
+        body { background-color: #111827; color: #d1d5db; }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+    <div class="max-w-7xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-100">📡 Análise de Sinal Capturado</h1>
+            <p id="signal-info" class="text-lg text-gray-400">Carregando informações do sinal...</p>
+        </header>
+
+        <div class="bg-gray-800 rounded-lg shadow-lg p-6">
+            <h2 class="text-2xl font-semibold text-gray-200 mb-4">Espectrograma</h2>
+            <div id="spectrogram-chart" class="w-full h-[60vh] bg-gray-900 rounded">
+                <div class="flex items-center justify-center h-full">
+                    <p class="text-2xl text-gray-500">Carregando dados de análise...</p>
+                </div>
+            </div>
+        </div>
+
+        <footer class="text-center mt-8">
+            <a href="/" class="px-6 py-2 font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700">Voltar ao Dashboard</a>
+            <p class="mt-4 text-gray-500">Desenvolvido por Lucas Cardoso Gomes.</p>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const signalId = urlParams.get('id');
+            const signalInfoEl = document.getElementById('signal-info');
+
+            if (signalId) {
+                fetch(`/api/signal/info/${signalId}`)
+                    .then(response => response.json())
+                    .then(info => {
+                        signalInfoEl.textContent = `Alvo: ${info.target} | Frequência: ${(info.frequency / 1e6).toFixed(3)} MHz | Capturado em: ${info.timestamp.replace('_', ' ')}`;
+                    });
+
+                fetch(`/api/signal/analyze/${signalId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data && data.spectrogram_db) {
+                            drawSpectrogram(data);
+                        } else {
+                            document.getElementById('spectrogram-chart').innerHTML = '<p class="text-2xl text-red-500">Falha ao carregar dados de análise.</p>';
+                        }
+                    });
+            }
+        });
+
+        function drawSpectrogram(data) {
+            const chartDiv = document.getElementById('spectrogram-chart');
+
+            const plotData = [{
+                z: data.spectrogram_db,
+                x: data.times,
+                y: data.frequencies.map(f => f / 1e6), // Frequência em MHz
+                type: 'heatmap',
+                colorscale: 'Jet', // Escala de cores vibrante, ótima para RF
+                colorbar: {
+                    title: 'Potência (dB)'
+                }
+            }];
+
+            const layout = {
+                title: 'Análise de Frequência vs. Tempo',
+                xaxis: { title: 'Tempo (s)' },
+                yaxis: { title: 'Frequência (MHz)' },
+                paper_bgcolor: '#1f2937', // bg-gray-800
+                plot_bgcolor: '#111827',  // bg-gray-900
+                font: {
+                    color: '#d1d5db' // color-gray-300
+                }
+            };
+
+            Plotly.newPlot(chartDiv, plotData, layout, {responsive: true});
+        }
+    </script>
+</body>
+</html>

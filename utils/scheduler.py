@@ -77,9 +77,14 @@ def load_pass_log():
 def scheduler_loop(scanner_event, shared_status, waterfall_event):
     """Loop principal que agenda as capturas."""
     
-    def log(message):
+    def log(message, level='INFO'):
         print(message)
-        shared_status['scheduler_log'].append(f"{datetime.datetime.now().strftime('%H:%M:%S')} - {message}")
+        log_entry = {
+            "timestamp": datetime.datetime.now().strftime('%H:%M:%S'),
+            "level": level,
+            "message": message
+        }
+        shared_status['scheduler_log'].append(log_entry)
         if len(shared_status['scheduler_log']) > 20:
             shared_status['scheduler_log'].pop(0)
 

@@ -26,6 +26,8 @@ from utils.scheduler import scheduler_loop
 from utils.scanner import real_capture
 from utils.sdr_manager import sdr_manager
 
+from utils.analyzer import analyze_wav_file
+
 # --- NOVIDADE: Evento de controle para o waterfall (o "semáforo") ---
 waterfall_event = threading.Event()
 waterfall_event.set() # Começa "verde" (permitido rodar)
@@ -162,7 +164,35 @@ async def websocket_endpoint(websocket: WebSocket):
             sdr.closeStream(rxStream)
             sdr_manager.active_stream = None
         sdr_manager.release_device()
+@app.get("/analysis", response_class=HTMLResponse)
+async def analysis_page(request: Request):
+    """Serve a página de análise de sinal."""
+    return templates.TemplateResponse("analysis.html", {"request": request})
 
+@app.get("/api/signal/info/{signal_id}")
+def get_signal_info(signal_id: int):
+    """Retorna os metadados de um sinal específico do DB."""
+    # (Poderia ser uma função em db.py, mas para simplificar, fazemos aqui)
+    conn = db.get_db_connection()
+    signal = conn.execute("SELECT * FROM signals WHERE id = ?", (signal_id,)).fetchone()
+    conn.close()
+    if signal:
+        return dict(signal)
+    return JSONResponse(content={"error": "Sinal não encontrado"}, status_code=404)
+
+@app.get("/api/signal/analyze/{signal_id}")
+def analyze_signal(signal_id: int):
+    """Processa o .wav de um sinal e retorna os dados do espectrograma."""
+    conn = db.get_db_connection()
+    signal = conn.execute("SELECT filepath FROM signals WHERE id = ?", (signal_id,)).fetchone()
+    conn.close()
+    if not signal or not signal['filepath']:
+        return JSONResponse(content={"error": "Arquivo não encontrado"}, status_code=404)
+    
+    analysis_data = analyze_wav_file(signal['filepath'])
+    if analysis_data:
+        return analysis_data
+    return JSONResponse(content={"error": "Falha ao processar o arquivo"}, status_code=500)
 if __name__ == "__main__":
     import uvicorn
     print("Iniciando o servidor web Uvicorn...")

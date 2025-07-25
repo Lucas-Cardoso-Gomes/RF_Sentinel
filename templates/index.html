@@ -10,7 +10,6 @@
         body { background-color: #111827; color: #d1d5db; }
         .status-active { color: #22c55e; text-shadow: 0 0 8px #22c55e; }
         .status-stopped { color: #ef4444; text-shadow: 0 0 8px #ef4444; }
-        .status-monitoring { color: #38bdf8; text-shadow: 0 0 8px #38bdf8; }
         #activity-log { height: 150px; background-color: #0c121e; border: 1px solid #374151; border-radius: 0.5rem; padding: 0.75rem; font-family: monospace; font-size: 0.8rem; overflow-y: scroll; white-space: pre-wrap; color: #9ca3af; }
     </style>
 </head>
@@ -152,8 +151,7 @@
                 hackrfStatusText.className = `text-xl font-bold mt-1 ${data.hackrf_status.connected ? 'status-active' : 'status-stopped'}`;
 
                 if(data.scheduler_log) {
-                    activityLog.innerHTML = data.scheduler_log.join('\n');
-                    activityLog.scrollTop = activityLog.scrollHeight;
+                    renderLogs(data.scheduler_log);
                 }
 
                 if(data.next_pass) {
@@ -206,13 +204,26 @@
                                 <td class="p-3">${(signal.timestamp || '').replace('_', ' ')}</td>
                                 <td class="p-3 font-mono"><a href="/${signal.filepath}" download class="text-blue-400 hover:underline">${signal.filepath.split(/[\\\/]/).pop()}</a></td>
                                 ${imageCell}
-                                <td class="p-3"><a href="#" class="text-indigo-400 hover:underline">Analisar</a></td>
+                                <td class="p-3"><a href="/analysis?id=${signal.id}" target="_blank" class="text-indigo-400 hover:underline">Analisar</a></td>
                             </tr>
                         `;
                         signalsTable.innerHTML += row;
                     });
                 }
             } catch (error) { console.error('Erro ao buscar sinais:', error); }
+        }
+
+        function renderLogs(logs) {
+            const logColors = {
+                'INFO': 'text-gray-400',
+                'SUCCESS': 'text-green-400',
+                'WARN': 'text-yellow-400',
+                'ERROR': 'text-red-400'
+            };
+            activityLog.innerHTML = logs.map(log => 
+                `<span class="${logColors[log.level] || 'text-gray-400'}">[${log.timestamp}] ${log.message}</span>`
+            ).join('\n');
+            activityLog.scrollTop = activityLog.scrollHeight;
         }
 
         function updateCountdown(targetDate) {
@@ -242,27 +253,19 @@
         }
 
         function connectWebSocket() {
-            if (ws && ws.readyState !== WebSocket.CLOSED) {
-                ws.close();
-            }
+            if (ws && ws.readyState !== WebSocket.CLOSED) ws.close();
             ws = new WebSocket(`ws://${window.location.host}/ws/waterfall`);
             ws.onopen = () => console.log("WebSocket para Waterfall conectado.");
             ws.onmessage = (event) => drawWaterfallLine(JSON.parse(event.data));
             ws.onclose = (event) => {
                 console.log(`WebSocket desconectado (código: ${event.code}).`);
-                if (event.code === 1012) { // Desconexão por captura prioritária
-                    ctx.fillStyle = 'orange';
-                    ctx.font = '20px sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('SDR em uso para captura. Reconectando...', canvas.width / 2, canvas.height / 2);
-                    setTimeout(connectWebSocket, 15000); 
-                } else if (event.code !== 1000) { // Outro erro
-                    ctx.fillStyle = 'red';
-                    ctx.font = '20px sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('Conexão Perdida. Tentando reconectar...', canvas.width / 2, canvas.height / 2);
-                    setTimeout(connectWebSocket, 5000);
-                }
+                const message = event.code === 1012 ? 'SDR em uso. Reconectando...' : 'Conexão Perdida. Reconectando...';
+                const color = event.code === 1012 ? 'orange' : 'red';
+                ctx.fillStyle = color;
+                ctx.font = '20px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(message, canvas.width / 2, canvas.height / 2);
+                setTimeout(connectWebSocket, event.code === 1012 ? 15000 : 5000);
             };
             ws.onerror = (error) => console.error("Erro no WebSocket:", error);
         }
