@@ -39,18 +39,17 @@ app = FastAPI(title="RFSentinel")
 app.mount("/captures", StaticFiles(directory="captures"), name="captures")
 templates = Jinja2Templates(directory="templates")
 
+# Apenas a função run_manual_capture precisa de ser alterada
+
 def run_manual_capture(target_info):
     SHARED_STATUS["manual_capture_active"] = True
-    logger.log("Iniciando captura manual...", "WARN")
-    sdr = sdr_manager.acquire()
-    if sdr:
-        try:
-            perform_capture(sdr, target_info)
-        finally:
-            sdr_manager.release(sdr)
-            logger.log("Captura manual finalizada.", "SUCCESS")
-    else:
-        logger.log("Não foi possível adquirir o dispositivo SDR para captura manual.", "ERROR")
+    logger.log("Iniciando captura manual via hackrf_transfer...", "WARN")
+    
+    # Não precisamos de adquirir o dispositivo SDR com o sdr_manager
+    # A função perform_capture irá chamar o hackrf_transfer diretamente
+    perform_capture(None, target_info)
+    
+    logger.log("Captura manual finalizada.", "SUCCESS")
     SHARED_STATUS["manual_capture_active"] = False
 
 @app.get("/", response_class=HTMLResponse)
@@ -75,14 +74,19 @@ async def manual_capture_endpoint(request: Request):
         freq_mhz = float(data.get("frequency_mhz", 0))
         capture_name = f"Manual_{mode}_{freq_mhz:.3f}MHz"
     
+    # Garante que o sample_rate nunca seja inferior a 2e6
+    sample_rate = data.get("sample_rate", 2e6)
+    if sample_rate < 2e6:
+        sample_rate = 2e6
+
     target_info = {
         "name": capture_name,
         "frequency": int(float(data.get("frequency_mhz", 0)) * 1e6),
         "capture_duration_seconds": int(data.get("duration_sec", 10)),
-        "sample_rate": data.get("sample_rate", 2e6),
+        "sample_rate": sample_rate,
         "mode": data.get("mode", "RAW"),
-        "lna_gain": data.get("lna_gain", 32),
-        "vga_gain": data.get("vga_gain", 16),
+        "lna_gain": data.get("lna_gain", 40),
+        "vga_gain": data.get("vga_gain", 30),
         "amp_enabled": data.get("amp_enabled", True)
     }
     threading.Thread(target=run_manual_capture, args=(target_info,)).start()
