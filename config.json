@@ -5,33 +5,36 @@
     "elevation_m": 115
   },
   "sdr_settings": {
-    "sample_rate": 2.5e6,
-    "gain": 40
+    "sample_rate": 2.5e6
   },
   "targets": [
     {
       "name": "ISS (ZARYA)",
       "tle_url": "https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle",
       "frequency": 145800000,
-      "capture_duration_seconds": 60
+      "capture_duration_seconds": 60,
+      "gains": { "lna": 32, "vga": 20, "amp": 0 }
     },
     {
       "name": "NOAA 15",
       "tle_url": "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle",
       "frequency": 137620000,
-      "capture_duration_seconds": 300
+      "capture_duration_seconds": 300,
+      "gains": { "lna": 40, "vga": 24, "amp": 0 }
     },
     {
       "name": "NOAA 18",
       "tle_url": "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle",
       "frequency": 137912500,
-      "capture_duration_seconds": 300
+      "capture_duration_seconds": 300,
+      "gains": { "lna": 40, "vga": 24, "amp": 0 }
     },
     {
       "name": "NOAA 19",
       "tle_url": "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle",
       "frequency": 137100000,
-      "capture_duration_seconds": 300
+      "capture_duration_seconds": 300,
+      "gains": { "lna": 40, "vga": 24, "amp": 0 }
     }
   ],
   "amateur_radio_monitoring": {
@@ -45,6 +48,7 @@
       97.1
     ],
     "squelch_db": -20.0,
-    "dwell_seconds": 10
+    "dwell_seconds": 10,
+    "gains": { "lna": 32, "vga": 20, "amp": 0 }
   }
 }

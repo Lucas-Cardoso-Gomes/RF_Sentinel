@@ -3,8 +3,9 @@ import sys
 import os
 import threading
 import json
+import time
 
-# Silencia os logs do libusb
+# Silencia os logs do libusb, deve ser uma das primeiras linhas
 os.environ['LIBUSB_DEBUG'] = '0'
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
@@ -25,10 +26,9 @@ from utils import db
 from utils.scheduler import scheduler_loop
 from utils.scanner import real_capture
 from utils.sdr_manager import sdr_manager
-
 from utils.analyzer import analyze_wav_file
 
-# --- NOVIDADE: Evento de controle para o waterfall (o "semáforo") ---
+# --- Evento de controle para o waterfall (o "semáforo") ---
 waterfall_event = threading.Event()
 waterfall_event.set() # Começa "verde" (permitido rodar)
 
@@ -56,13 +56,29 @@ templates = Jinja2Templates(directory="templates")
 app.mount("/captures", StaticFiles(directory="captures"), name="captures")
 
 def run_manual_capture(target_info):
+    """Função executada em uma thread para captura manual."""
     SHARED_STATUS["manual_capture_active"] = True
     waterfall_event.clear() # Pausa o waterfall
+    time.sleep(1) # Pequena pausa para garantir que o websocket feche
+    
     print(f"Iniciando captura manual para: {target_info}")
     real_capture(target_info)
     print("Captura manual finalizada.")
+    
     waterfall_event.set() # Libera o waterfall
     SHARED_STATUS["manual_capture_active"] = False
+
+# --- Endpoints da API e da Interface ---
+
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    """Serve a página principal do dashboard."""
+    return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/analysis", response_class=HTMLResponse)
+async def analysis_page(request: Request):
+    """Serve a página de análise de sinal."""
+    return templates.TemplateResponse("analysis.html", {"request": request})
 
 @app.post("/api/capture/manual")
 async def manual_capture_endpoint(request: Request):
@@ -73,18 +89,16 @@ async def manual_capture_endpoint(request: Request):
     target_info = {
         "name": data.get("name", "ManualCapture"),
         "frequency": int(float(data.get("frequency_mhz", 0)) * 1e6),
-        "capture_duration_seconds": int(data.get("duration_sec", 10))
+        "capture_duration_seconds": int(data.get("duration_sec", 10)),
+        "gains": data.get("gains", {"lna": 32, "vga": 20, "amp": 0}) # Adiciona ganhos
     }
     capture_thread = threading.Thread(target=run_manual_capture, args=(target_info,))
     capture_thread.start()
     return {"status": "Captura manual iniciada."}
 
-@app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
-
 @app.get("/api/status")
 def get_status():
+    """Retorna o status combinado de todo o sistema para o frontend."""
     return {
         "scanner_status": "Ativo" if scanner_event.is_set() else "Parado",
         "hackrf_status": SHARED_STATUS["hackrf_status"],
@@ -95,7 +109,30 @@ def get_status():
 
 @app.get("/api/signals")
 def get_signals():
+    """Fornece a lista das últimas capturas do banco de dados."""
     return db.get_latest_signals(10)
+
+@app.get("/api/signal/info/{signal_id}")
+def get_signal_info(signal_id: int):
+    conn = db.get_db_connection()
+    signal = conn.execute("SELECT * FROM signals WHERE id = ?", (signal_id,)).fetchone()
+    conn.close()
+    if signal:
+        return dict(signal)
+    return JSONResponse(content={"error": "Sinal não encontrado"}, status_code=404)
+
+@app.get("/api/signal/analyze/{signal_id}")
+def analyze_signal(signal_id: int):
+    conn = db.get_db_connection()
+    signal = conn.execute("SELECT filepath FROM signals WHERE id = ?", (signal_id,)).fetchone()
+    conn.close()
+    if not signal or not signal['filepath'] or not os.path.exists(signal['filepath']):
+        return JSONResponse(content={"error": "Arquivo de áudio não encontrado no servidor."}, status_code=404)
+    
+    analysis_data = analyze_wav_file(signal['filepath'])
+    if analysis_data:
+        return analysis_data
+    return JSONResponse(content={"error": "Falha ao processar o arquivo de áudio."}, status_code=500)
 
 @app.post("/scanner/toggle")
 def toggle_scanner():
@@ -106,8 +143,6 @@ def toggle_scanner():
 @app.websocket("/ws/waterfall")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    
-    # Adquire o dispositivo SOMENTE se o semáforo estiver verde
     if not waterfall_event.is_set():
         await websocket.close(code=1011, reason="SDR está em uso para uma captura prioritária.")
         return
@@ -121,7 +156,8 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         sdr.setSampleRate(SOAPY_SDR_RX, 0, 2.4e6)
         sdr.setFrequency(SOAPY_SDR_RX, 0, 101.1e6)
-        sdr.setGain(SOAPY_SDR_RX, 0, 32)
+        sdr.setGain(SOAPY_SDR_RX, 0, "LNA", 32)
+        sdr.setGain(SOAPY_SDR_RX, 0, "VGA", 20)
         rxStream = sdr.setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32)
         sdr.activateStream(rxStream)
         sdr_manager.active_stream = rxStream
@@ -139,7 +175,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 sdr.readStream(rxStream, [samples], len(samples))
                 fft_result = np.fft.fftshift(np.fft.fft(samples))
                 psd = np.abs(fft_result)**2
-                psd_db = 10 * np.log10(psd / (fft_size**2) + 1e-12) # Evita log de zero
+                psd_db = 10 * np.log10(psd / (fft_size**2) + 1e-12)
                 await websocket.send_json(psd_db.tolist())
                 await asyncio.sleep(0.05)
 
@@ -149,8 +185,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 data = json.loads(message)
                 if 'frequency' in data:
                     sdr.setFrequency(SOAPY_SDR_RX, 0, float(data['frequency']))
-                if 'gain' in data:
-                    sdr.setGain(SOAPY_SDR_RX, 0, int(data['gain']))
+                if 'gain' in data: # Assume que o ganho é um dicionário {"lna": val, "vga": val}
+                    if "lna" in data["gain"]: sdr.setGain(SOAPY_SDR_RX, 0, "LNA", data["gain"]["lna"])
+                    if "vga" in data["gain"]: sdr.setGain(SOAPY_SDR_RX, 0, "VGA", data["gain"]["vga"])
         
         await asyncio.gather(rx_loop(), tx_loop())
 
@@ -164,35 +201,7 @@ async def websocket_endpoint(websocket: WebSocket):
             sdr.closeStream(rxStream)
             sdr_manager.active_stream = None
         sdr_manager.release_device()
-@app.get("/analysis", response_class=HTMLResponse)
-async def analysis_page(request: Request):
-    """Serve a página de análise de sinal."""
-    return templates.TemplateResponse("analysis.html", {"request": request})
 
-@app.get("/api/signal/info/{signal_id}")
-def get_signal_info(signal_id: int):
-    """Retorna os metadados de um sinal específico do DB."""
-    # (Poderia ser uma função em db.py, mas para simplificar, fazemos aqui)
-    conn = db.get_db_connection()
-    signal = conn.execute("SELECT * FROM signals WHERE id = ?", (signal_id,)).fetchone()
-    conn.close()
-    if signal:
-        return dict(signal)
-    return JSONResponse(content={"error": "Sinal não encontrado"}, status_code=404)
-
-@app.get("/api/signal/analyze/{signal_id}")
-def analyze_signal(signal_id: int):
-    """Processa o .wav de um sinal e retorna os dados do espectrograma."""
-    conn = db.get_db_connection()
-    signal = conn.execute("SELECT filepath FROM signals WHERE id = ?", (signal_id,)).fetchone()
-    conn.close()
-    if not signal or not signal['filepath']:
-        return JSONResponse(content={"error": "Arquivo não encontrado"}, status_code=404)
-    
-    analysis_data = analyze_wav_file(signal['filepath'])
-    if analysis_data:
-        return analysis_data
-    return JSONResponse(content={"error": "Falha ao processar o arquivo"}, status_code=500)
 if __name__ == "__main__":
     import uvicorn
     print("Iniciando o servidor web Uvicorn...")
