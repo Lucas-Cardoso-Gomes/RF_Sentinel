@@ -12,23 +12,19 @@ from utils import db, decoder
 from utils.logger import logger
 
 def perform_capture(sdr, target_info):
-    """
-    Executa a captura de sinal com uma sequência de inicialização robusta e demodulação opcional.
-    """
     rxStream = None
     filepath = ""
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     
     try:
-        # Parâmetros
         mode = target_info.get('mode', 'RAW')
-        sample_rate = target_info.get('sample_rate', 2.4e6)
+        sample_rate = target_info.get('sample_rate', 2e6)
         frequency = target_info.get('frequency', 100e6)
-        lna_gain = target_info.get("lna_gain", 40)
-        vga_gain = target_info.get("vga_gain", 30)
+        lna_gain = target_info.get("lna_gain", 32)
+        vga_gain = target_info.get("vga_gain", 16)
+        amp_enabled = target_info.get("amp_enabled", True)
         audio_sample_rate = 48000
 
-        # --- Sequência de Configuração Final ---
         sdr.setSampleRate(SOAPY_SDR_RX, 0, sample_rate)
         sdr.setFrequency(SOAPY_SDR_RX, 0, frequency)
         rxStream = sdr.setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32)
@@ -37,13 +33,16 @@ def perform_capture(sdr, target_info):
         sdr.setGainMode(SOAPY_SDR_RX, 0, False)
         sdr.setGain(SOAPY_SDR_RX, 0, "LNA", lna_gain)
         sdr.setGain(SOAPY_SDR_RX, 0, "VGA", vga_gain)
+        if "AMP" in sdr.listGains(SOAPY_SDR_RX, 0):
+            sdr.setGain(SOAPY_SDR_RX, 0, "AMP", 1 if amp_enabled else 0)
+        
         time.sleep(0.5)
         
         read_lna = sdr.getGain(SOAPY_SDR_RX, 0, "LNA")
         read_vga = sdr.getGain(SOAPY_SDR_RX, 0, "VGA")
-        logger.log(f"Ganhos Lidos do Hardware -> LNA: {read_lna}dB, VGA: {read_vga}dB", "SUCCESS")
+        read_amp = sdr.getGain(SOAPY_SDR_RX, 0, "AMP") if "AMP" in sdr.listGains(SOAPY_SDR_RX, 0) else "N/A"
+        logger.log(f"Ganhos Lidos -> LNA: {read_lna}dB, VGA: {read_vga}dB, AMP: {read_amp}", "SUCCESS")
 
-        # --- Captura e Gravação ---
         target_name = target_info.get('name', 'capture')
         filename = f"{target_name.replace(' ', '_')}_{timestamp}_{mode}.wav"
         filepath = os.path.join("captures", filename)
@@ -59,7 +58,7 @@ def perform_capture(sdr, target_info):
 
             total_samples_to_capture = int(sample_rate * target_info['capture_duration_seconds'])
             samples_captured = 0
-            chunk_size = 1024 * 128
+            chunk_size = 1024 * 128 if sample_rate > 5e6 else 1024 * 16
             samples_buffer = np.zeros(chunk_size, np.complex64)
 
             while samples_captured < total_samples_to_capture:

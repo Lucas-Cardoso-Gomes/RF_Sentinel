@@ -26,36 +26,21 @@
 <body class="p-4 sm:p-6">
     <div class="max-w-7xl mx-auto">
         <header class="text-center mb-8">
-            <h1 class="text-4xl font-bold text-slate-100 flex items-center justify-center gap-4">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-10 h-10 text-indigo-400"><path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.136 12.006a8.25 8.25 0 0 1 13.728 0M2 8.974a12 12 0 0 1 20 0M16.5 7.5a.75.75 0 0 0-1.5 0v1.5a.75.75 0 0 0 1.5 0V7.5Zm-4.5 0a.75.75 0 0 0-1.5 0v1.5a.75.75 0 0 0 1.5 0V7.5Z" /></svg>
-                RFSentinel
-            </h1>
+            <h1 class="text-4xl font-bold text-slate-100 flex items-center justify-center gap-4"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-10 h-10 text-indigo-400"><path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.136 12.006a8.25 8.25 0 0 1 13.728 0M2 8.974a12 12 0 0 1 20 0M16.5 7.5a.75.75 0 0 0-1.5 0v1.5a.75.75 0 0 0 1.5 0V7.5Zm-4.5 0a.75.75 0 0 0-1.5 0v1.5a.75.75 0 0 0 1.5 0V7.5Z" /></svg>RFSentinel</h1>
             <p class="text-lg text-slate-400 mt-2">Centro de Controle da Estação Terrestre</p>
         </header>
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div class="md:col-span-2 lg:col-span-1 flex flex-col gap-6">
-                <div class="card">
-                    <h2 class="text-xl font-semibold text-slate-200 mb-4">Status do Sistema</h2>
-                    <div class="space-y-3">
-                        <div class="flex items-center"><span id="hackrf-status-led" class="status-led status-off"></span><span id="hackrf-status-text">Verificando...</span></div>
-                        <div class="flex items-center"><span id="scanner-status-led" class="status-led status-off"></span><span id="scanner-status-text">Verificando...</span></div>
-                    </div>
-                </div>
+                <div class="card"><h2 class="text-xl font-semibold text-slate-200 mb-4">Status do Sistema</h2><div class="space-y-3"><div class="flex items-center"><span id="hackrf-status-led" class="status-led status-off"></span><span id="hackrf-status-text">Verificando...</span></div><div class="flex items-center"><span id="scanner-status-led" class="status-led status-off"></span><span id="scanner-status-text">Verificando...</span></div></div></div>
+                <div class="card"><h2 class="text-xl font-semibold text-slate-200 mb-4">Controle do Scanner</h2><p class="text-slate-400 mb-4 text-sm">Ativa ou pausa o agendador de capturas automáticas de satélites.</p><button id="toggle-button" class="btn btn-primary w-full justify-center"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M4 19h5v-5M20 4h-5v5M20 19h-5v-5"></path></svg><span id="toggle-button-text">Ativar/Parar</span></button></div>
+            </div>
 
-                <div class="card">
-                    <h2 class="text-xl font-semibold text-slate-200 mb-4">Controle do Scanner</h2>
-                    <p class="text-slate-400 mb-4 text-sm">Ativa ou pausa o agendador de capturas automáticas de satélites.</p>
-                    <button id="toggle-button" class="btn btn-primary w-full justify-center">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M4 19h5v-5M20 4h-5v5M20 19h-5v-5"></path></svg>
-                        <span id="toggle-button-text">Ativar/Parar</span>
-                    </button>
-                </div>
-
+            <div class="md:col-span-2 lg:col-span-1 flex flex-col gap-6">
                 <div class="card">
                     <h2 class="text-xl font-semibold text-slate-200 mb-4">Captura Manual</h2>
                     <div class="space-y-4">
-                        <div>
+                         <div>
                             <label for="capture-mode" class="text-sm font-medium text-slate-400">Modo de Captura</label>
                             <select id="capture-mode" class="mt-1 block w-full bg-slate-800 border border-slate-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
                                 <option value="RAW">RAW (I/Q para Análise)</option>
@@ -86,6 +71,22 @@
                             <label for="capture-duration" class="text-sm font-medium text-slate-400">Duração (segundos)</label>
                             <input type="number" id="capture-duration" value="15" class="mt-1 block w-full bg-slate-800 border border-slate-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
                         </div>
+                        
+                        <div class="border-t border-slate-600 pt-4 space-y-4">
+                            <div>
+                                <label for="lna-gain" class="text-sm font-medium text-slate-400 flex justify-between"><span>Ganho LNA (IF)</span><span id="lna-gain-value">32 dB</span></label>
+                                <input type="range" id="lna-gain" min="0" max="40" step="8" value="32" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+                            </div>
+                             <div>
+                                <label for="vga-gain" class="text-sm font-medium text-slate-400 flex justify-between"><span>Ganho VGA (Baseband)</span><span id="vga-gain-value">16 dB</span></label>
+                                <input type="range" id="vga-gain" min="0" max="62" step="2" value="16" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+                            </div>
+                            <div class="flex items-center">
+                                <input id="amp-enable" type="checkbox" checked class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                <label for="amp-enable" class="ml-3 block text-sm font-medium text-slate-300">Ativar Amplificador (AMP)</label>
+                            </div>
+                        </div>
+                        
                         <button id="manual-capture-button" class="btn btn-success w-full justify-center">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.82m5.84-2.56a14.98 14.98 0 00-11.61 0m11.61 0a14.98 14.98 0 0111.61 0m-11.61 0a6 6 0 015.84-7.38v4.82"></path></svg>
                             <span id="manual-capture-button-text">Gravar Sinal</span>
@@ -94,58 +95,30 @@
                 </div>
             </div>
 
-            <div class="md:col-span-2 lg:col-span-2 flex flex-col gap-6">
-                 <div class="card">
-                    <h2 class="text-xl font-semibold text-slate-200 mb-3">Próxima Captura Agendada</h2>
-                    <div class="flex items-center gap-4">
-                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12 text-cyan-400"><path stroke-linecap="round" stroke-linejoin="round" d="M12.012 7.004a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm0 3.75a.75.75 0 0 0 0 1.5h.008a.75.75 0 0 0 0-1.5h-.008Zm0 3a.75.75 0 0 0 0 1.5h.008a.75.75 0 0 0 0-1.5h-.008Z" /><path stroke-linecap="round" stroke-linejoin="round" d="m14.25 8.25-1.25 1.25 1.25 1.25m-4.5-2.5-1.25 1.25 1.25 1.25" /><path stroke-linecap="round" stroke-linejoin="round" d="m3.75 12 16.5 0m-16.5 0L8.25 6m-4.5 6 4.5 6" /></svg>
-                        <div>
-                            <p class="text-lg text-slate-400">Alvo: <span id="next-target" class="font-bold text-slate-200">Nenhum</span></p>
-                            <p class="text-sm text-slate-400">Horário (UTC): <span id="next-time" class="font-bold text-slate-200">--:--:--</span></p>
-                            <p class="text-2xl text-cyan-400 mt-1" id="next-countdown">Aguardando...</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="card flex-grow flex flex-col">
-                    <h2 class="text-xl font-semibold text-slate-200 mb-4">Log de Atividades</h2>
-                    <div id="activity-log" class="flex-grow"></div>
-                </div>
+            <div class="md:col-span-2 lg:col-span-1 flex flex-col gap-6">
+                 <div class="card"><h2 class="text-xl font-semibold text-slate-200 mb-3">Próxima Captura Agendada</h2><div class="flex items-center gap-4"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12 text-cyan-400"><path stroke-linecap="round" stroke-linejoin="round" d="M12.012 7.004a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm0 3.75a.75.75 0 0 0 0 1.5h.008a.75.75 0 0 0 0-1.5h-.008Zm0 3a.75.75 0 0 0 0 1.5h.008a.75.75 0 0 0 0-1.5h-.008Z" /><path stroke-linecap="round" stroke-linejoin="round" d="m14.25 8.25-1.25 1.25 1.25 1.25m-4.5-2.5-1.25 1.25 1.25 1.25" /><path stroke-linecap="round" stroke-linejoin="round" d="m3.75 12 16.5 0m-16.5 0L8.25 6m-4.5 6 4.5 6" /></svg><div><p class="text-lg text-slate-400">Alvo: <span id="next-target" class="font-bold text-slate-200">Nenhum</span></p><p class="text-sm text-slate-400">Horário (UTC): <span id="next-time" class="font-bold text-slate-200">--:--:--</span></p><p class="text-2xl text-cyan-400 mt-1" id="next-countdown">Aguardando...</p></div></div></div>
+                <div class="card flex-grow flex flex-col"><h2 class="text-xl font-semibold text-slate-200 mb-4">Log de Atividades</h2><div id="activity-log" class="flex-grow"></div></div>
             </div>
-
+            
             <div class="md:col-span-2 lg:col-span-3 card">
                 <h2 class="text-2xl font-semibold text-slate-200 mb-4">Histórico de Capturas</h2>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left">
-                        <thead class="border-b border-slate-600 text-slate-400">
-                            <tr>
-                                <th class="p-3">Alvo</th>
-                                <th class="p-3">Frequência</th>
-                                <th class="p-3">Data/Hora (Local)</th>
-                                <th class="p-3">Áudio</th>
-                                <th class="p-3 text-center">Imagem</th>
-                                <th class="p-3 text-center">Ações</th>
-                            </tr>
-                        </thead>
+                        <thead class="border-b border-slate-600 text-slate-400"><tr><th class="p-3">Alvo</th><th class="p-3">Frequência</th><th class="p-3">Data/Hora (Local)</th><th class="p-3">Áudio</th><th class="p-3 text-center">Imagem</th><th class="p-3 text-center">Ações</th></tr></thead>
                         <tbody id="signals-table"></tbody>
                     </table>
                 </div>
             </div>
         </div>
 
-        <footer class="text-center mt-8 text-slate-500">
-            <p>Desenvolvido por Lucas Cardoso Gomes.</p>
-        </footer>
+        <footer class="text-center mt-8 text-slate-500"><p>Desenvolvido por Lucas Cardoso Gomes.</p></footer>
     </div>
     
 <script>
-    // --- OBJETO PRINCIPAL DA APLICAÇÃO ---
     const RFSentinelApp = {
         elements: {},
         state: {},
-
-        // --- INICIALIZAÇÃO ---
         init() {
-            // Mapeia todos os elementos da página para o objeto `elements`
             this.elements = {
                 hackrfStatusLed: document.getElementById('hackrf-status-led'),
                 hackrfStatusText: document.getElementById('hackrf-status-text'),
@@ -160,18 +133,19 @@
                 nextCountdown: document.getElementById('next-countdown'),
                 manualCaptureButton: document.getElementById('manual-capture-button'),
                 manualCaptureButtonText: document.getElementById('manual-capture-button-text'),
-                captureNameInput: document.getElementById('capture-name'), // <-- BUG CORRIGIDO AQUI
+                captureNameInput: document.getElementById('capture-name'),
                 captureFreqInput: document.getElementById('capture-freq'),
                 captureSampleRateInput: document.getElementById('capture-sample-rate'),
                 captureDurationInput: document.getElementById('capture-duration'),
                 captureModeInput: document.getElementById('capture-mode'),
+                lnaGainInput: document.getElementById('lna-gain'),
+                lnaGainValue: document.getElementById('lna-gain-value'),
+                vgaGainInput: document.getElementById('vga-gain'),
+                vgaGainValue: document.getElementById('vga-gain-value'),
+                ampEnableInput: document.getElementById('amp-enable'),
             };
-            this.state = {
-                countdownInterval: null,
-                lastLogLength: 0
-            };
+            this.state = { countdownInterval: null, lastLogLength: 0 };
             
-            // Adiciona os listeners (ouvintes de eventos) para os botões
             this.elements.toggleButton.addEventListener('click', () => this.api.toggleScanner());
             this.elements.manualCaptureButton.addEventListener('click', () => this.api.startManualCapture());
             this.elements.signalsTable.addEventListener('click', (event) => {
@@ -181,20 +155,21 @@
                     this.api.deleteSignal(signalId);
                 }
             });
-            
-            // Inicia os loops de atualização
+            this.elements.lnaGainInput.addEventListener('input', (e) => {
+                this.elements.lnaGainValue.textContent = `${e.target.value} dB`;
+            });
+            this.elements.vgaGainInput.addEventListener('input', (e) => {
+                this.elements.vgaGainValue.textContent = `${e.target.value} dB`;
+            });
+
             this.updateLoop();
         },
-
-        // --- LOOPS DE ATUALIZAÇÃO ---
         updateLoop() {
             this.api.fetchStatus();
             this.api.fetchSignals();
             setInterval(() => this.api.fetchStatus(), 2000);
             setInterval(() => this.api.fetchSignals(), 10000);
         },
-
-        // --- COMUNICAÇÃO COM O BACKEND (API) ---
         api: {
             async fetchStatus() {
                 try {
@@ -233,11 +208,14 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            name: elements.captureNameInput.value, // <-- BUG CORRIGIDO AQUI
+                            name: elements.captureNameInput.value,
                             frequency_mhz: elements.captureFreqInput.value,
                             duration_sec: elements.captureDurationInput.value,
                             sample_rate: parseFloat(elements.captureSampleRateInput.value),
-                            mode: elements.captureModeInput.value
+                            mode: elements.captureModeInput.value,
+                            lna_gain: parseInt(elements.lnaGainInput.value),
+                            vga_gain: parseInt(elements.vgaGainInput.value),
+                            amp_enabled: elements.ampEnableInput.checked
                         })
                     });
                     if (!response.ok) {
@@ -268,8 +246,6 @@
                 }
             }
         },
-
-        // --- ATUALIZAÇÃO DA INTERFACE (UI) ---
         ui: {
             renderStatus(data) {
                 const { elements } = RFSentinelApp;
@@ -322,7 +298,6 @@
                         }
                         const isRaw = signal.filepath.toLowerCase().includes('_raw.wav');
                         const analysisLink = isRaw ? `<a href="/analysis?id=${signal.id}" target="_blank" class="text-indigo-400 hover:underline mr-4">Analisar</a>` : `<span class="text-slate-500 mr-4" title="Análise disponível apenas para capturas RAW">Analisar</span>`;
-
                         return `<tr class="border-b border-slate-700 hover:bg-slate-800/50" style="transition: opacity 0.5s;" data-signal-id="${signal.id}"><td class="p-3 font-semibold text-slate-300">${signal.target}</td><td class="p-3">${freqMhz} MHz</td><td class="p-3">${localTimestamp}</td><td class="p-3"><a href="/${signal.filepath}" download class="text-blue-400 hover:underline flex items-center gap-2"><svg class="w-4 h-4" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>${fileName}</a></td>${imageCell}<td class="p-3 text-center">${analysisLink}<button class="text-red-400 hover:text-red-300 delete-btn" data-signal-id="${signal.id}" title="Apagar Sinal"><svg class="w-6 h-6 inline-block" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg></button></td></tr>`;
                     }).join('');
                 }
@@ -355,7 +330,6 @@
         }
     };
     
-    // Inicia a aplicação quando a página estiver pronta
     document.addEventListener('DOMContentLoaded', () => RFSentinelApp.init());
 </script>
 </body>

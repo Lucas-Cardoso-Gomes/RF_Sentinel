@@ -61,8 +61,6 @@ async def read_root(request: Request):
 async def analysis_page(request: Request):
     return templates.TemplateResponse("analysis.html", {"request": request})
 
-# Apenas a função manual_capture_endpoint precisa de ser alterada
-
 @app.post("/api/capture/manual")
 async def manual_capture_endpoint(request: Request):
     is_scheduler_capturing = not scheduler_thread.is_idle()
@@ -81,13 +79,15 @@ async def manual_capture_endpoint(request: Request):
         "name": capture_name,
         "frequency": int(float(data.get("frequency_mhz", 0)) * 1e6),
         "capture_duration_seconds": int(data.get("duration_sec", 10)),
-        "sample_rate": data.get("sample_rate", 2e6), # Padrão atualizado para 2e6
+        "sample_rate": data.get("sample_rate", 2e6),
         "mode": data.get("mode", "RAW"),
-        "lna_gain": 40,
-        "vga_gain": 30
+        "lna_gain": data.get("lna_gain", 32),
+        "vga_gain": data.get("vga_gain", 16),
+        "amp_enabled": data.get("amp_enabled", True)
     }
     threading.Thread(target=run_manual_capture, args=(target_info,)).start()
     return {"status": "Captura manual iniciada."}
+
 @app.get("/api/status")
 def get_status():
     return { "scanner_status": "Ativo" if scanner_event.is_set() else "Pausado", "hackrf_status": SHARED_STATUS["hackrf_status"], "next_pass": SHARED_STATUS["next_pass"], "scheduler_log": SHARED_STATUS["scheduler_log"], "manual_capture_active": SHARED_STATUS["manual_capture_active"], "is_scheduler_capturing": not scheduler_thread.is_idle() }
