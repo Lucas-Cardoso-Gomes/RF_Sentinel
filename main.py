@@ -61,6 +61,8 @@ async def read_root(request: Request):
 async def analysis_page(request: Request):
     return templates.TemplateResponse("analysis.html", {"request": request})
 
+# Apenas a função manual_capture_endpoint precisa de ser alterada
+
 @app.post("/api/capture/manual")
 async def manual_capture_endpoint(request: Request):
     is_scheduler_capturing = not scheduler_thread.is_idle()
@@ -68,18 +70,24 @@ async def manual_capture_endpoint(request: Request):
         return JSONResponse(content={"error": "Outra captura (manual ou agendada) já está em andamento."}, status_code=409)
     
     data = await request.json()
+    
+    capture_name = data.get("name")
+    if not capture_name or capture_name.strip() == "":
+        mode = data.get("mode", "RAW")
+        freq_mhz = float(data.get("frequency_mhz", 0))
+        capture_name = f"Manual_{mode}_{freq_mhz:.3f}MHz"
+    
     target_info = {
-        "name": data.get("name", "ManualCapture"),
+        "name": capture_name,
         "frequency": int(float(data.get("frequency_mhz", 0)) * 1e6),
         "capture_duration_seconds": int(data.get("duration_sec", 10)),
-        "sample_rate": data.get("sample_rate", 2.4e6),
+        "sample_rate": data.get("sample_rate", 2e6), # Padrão atualizado para 2e6
+        "mode": data.get("mode", "RAW"),
         "lna_gain": 40,
-        "vga_gain": 30,
-        "mode": data.get("mode", "RAW") # Adiciona o modo recebido do frontend
+        "vga_gain": 30
     }
     threading.Thread(target=run_manual_capture, args=(target_info,)).start()
     return {"status": "Captura manual iniciada."}
-
 @app.get("/api/status")
 def get_status():
     return { "scanner_status": "Ativo" if scanner_event.is_set() else "Pausado", "hackrf_status": SHARED_STATUS["hackrf_status"], "next_pass": SHARED_STATUS["next_pass"], "scheduler_log": SHARED_STATUS["scheduler_log"], "manual_capture_active": SHARED_STATUS["manual_capture_active"], "is_scheduler_capturing": not scheduler_thread.is_idle() }
@@ -100,10 +108,11 @@ def analyze_signal(signal_id: int):
     conn = db.get_db_connection()
     signal = conn.execute("SELECT filepath FROM signals WHERE id = ?", (signal_id,)).fetchone()
     conn.close()
-    if not signal or not signal['filepath'] or not os.path.exists(signal['filepath']):
-        return JSONResponse(content={"error": "Arquivo não encontrado."}, status_code=404)
+    # A análise só funciona em ficheiros RAW
+    if not signal or not signal['filepath'] or not os.path.exists(signal['filepath'] or '_RAW' not in signal['filepath']):
+        return JSONResponse(content={"error": "Ficheiro não encontrado ou não é do tipo RAW."}, status_code=404)
     analysis_data = analyze_wav_file(signal['filepath'])
-    return analysis_data if analysis_data else JSONResponse(content={"error": "Falha ao processar arquivo."}, status_code=500)
+    return analysis_data if analysis_data else JSONResponse(content={"error": "Falha ao processar ficheiro."}, status_code=500)
 
 @app.post("/scanner/toggle")
 def toggle_scanner():
@@ -120,19 +129,19 @@ def delete_signal(signal_id: int):
     if paths.get("filepath") and os.path.exists(paths["filepath"]):
         try:
             os.remove(paths["filepath"])
-            logger.log(f"Arquivo .wav apagado: {paths['filepath']}", "SUCCESS")
+            logger.log(f"Ficheiro .wav apagado: {paths['filepath']}", "SUCCESS")
         except OSError as e:
-            logger.log(f"Erro ao apagar arquivo .wav {paths['filepath']}: {e}", "ERROR")
+            logger.log(f"Erro ao apagar ficheiro .wav {paths['filepath']}: {e}", "ERROR")
     if paths.get("image_path") and os.path.exists(paths["image_path"]):
         try:
             os.remove(paths["image_path"])
-            logger.log(f"Arquivo de imagem apagado: {paths['image_path']}", "SUCCESS")
+            logger.log(f"Ficheiro de imagem apagado: {paths['image_path']}", "SUCCESS")
         except OSError as e:
-            logger.log(f"Erro ao apagar arquivo de imagem {paths['image_path']}: {e}", "ERROR")
+            logger.log(f"Erro ao apagar ficheiro de imagem {paths['image_path']}: {e}", "ERROR")
     if db.delete_signal_by_id(signal_id):
-        return {"status": "Sinal e arquivos apagados com sucesso."}
+        return {"status": "Sinal e ficheiros apagados com sucesso."}
     else:
-        return JSONResponse(content={"error": "Falha ao apagar registro do banco de dados."}, status_code=500)
+        return JSONResponse(content={"error": "Falha ao apagar registo do banco de dados."}, status_code=500)
 
 if __name__ == "__main__":
     import uvicorn

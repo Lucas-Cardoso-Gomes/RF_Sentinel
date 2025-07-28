@@ -5,7 +5,7 @@
     "elevation_m": 115
   },
   "sdr_settings": {
-    "sample_rate": 2.4e6
+    "sample_rate": 2e6
   },
   "targets": [
     {

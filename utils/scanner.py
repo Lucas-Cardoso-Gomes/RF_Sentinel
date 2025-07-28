@@ -7,64 +7,82 @@ import wave
 import os
 import json
 import time
+from scipy.signal import decimate
 from utils import db, decoder
 from utils.logger import logger
 
 def perform_capture(sdr, target_info):
     """
-    Executa a captura de sinal com uma configuração simplificada e robusta para máxima compatibilidade.
+    Executa a captura de sinal com uma sequência de inicialização robusta e demodulação opcional.
     """
     rxStream = None
     filepath = ""
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     
     try:
-        # --- Configuração Simplificada ---
+        # Parâmetros
+        mode = target_info.get('mode', 'RAW')
         sample_rate = target_info.get('sample_rate', 2.4e6)
         frequency = target_info.get('frequency', 100e6)
-        
+        lna_gain = target_info.get("lna_gain", 40)
+        vga_gain = target_info.get("vga_gain", 30)
+        audio_sample_rate = 48000
+
+        # --- Sequência de Configuração Final ---
         sdr.setSampleRate(SOAPY_SDR_RX, 0, sample_rate)
         sdr.setFrequency(SOAPY_SDR_RX, 0, frequency)
-        
-        # Ativa o modo de ganho automático, deixando o driver gerenciar os ganhos.
-        # Esta é a abordagem mais estável se a configuração manual estiver a falhar.
-        sdr.setGainMode(SOAPY_SDR_RX, 0, True)
-        logger.log(f"Modo de ganho automático ativado.", "INFO")
-        
-        time.sleep(0.5) # Pausa para estabilização
-
-        # --- Fim da Configuração ---
-
         rxStream = sdr.setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32)
         sdr.activateStream(rxStream)
         
-        time.sleep(0.1)
+        sdr.setGainMode(SOAPY_SDR_RX, 0, False)
+        sdr.setGain(SOAPY_SDR_RX, 0, "LNA", lna_gain)
+        sdr.setGain(SOAPY_SDR_RX, 0, "VGA", vga_gain)
+        time.sleep(0.5)
         
-        chunk_size = 1024 * 32
-        samples_buffer = np.zeros(chunk_size, np.complex64)
-        total_samples_to_capture = int(sample_rate * target_info['capture_duration_seconds'])
-        samples_captured = 0
+        read_lna = sdr.getGain(SOAPY_SDR_RX, 0, "LNA")
+        read_vga = sdr.getGain(SOAPY_SDR_RX, 0, "VGA")
+        logger.log(f"Ganhos Lidos do Hardware -> LNA: {read_lna}dB, VGA: {read_vga}dB", "SUCCESS")
 
-        filename = f"{target_info.get('name', 'capture').replace(' ', '_')}_{timestamp}.wav"
+        # --- Captura e Gravação ---
+        target_name = target_info.get('name', 'capture')
+        filename = f"{target_name.replace(' ', '_')}_{timestamp}_{mode}.wav"
         filepath = os.path.join("captures", filename)
         os.makedirs("captures", exist_ok=True)
+        
+        logger.log(f"Gravando {target_name} em modo {mode} por {target_info['capture_duration_seconds']}s...", "INFO")
 
-        logger.log(f"Gravando por {target_info['capture_duration_seconds']}s para {filepath}...", "INFO")
         with wave.open(filepath, 'wb') as wf:
-            wf.setnchannels(2)
-            wf.setsampwidth(2)
-            wf.setframerate(int(sample_rate))
-            
+            if mode == 'RAW':
+                wf.setnchannels(2); wf.setsampwidth(2); wf.setframerate(int(sample_rate))
+            else:
+                wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(audio_sample_rate)
+
+            total_samples_to_capture = int(sample_rate * target_info['capture_duration_seconds'])
+            samples_captured = 0
+            chunk_size = 1024 * 128
+            samples_buffer = np.zeros(chunk_size, np.complex64)
+
             while samples_captured < total_samples_to_capture:
                 sr = sdr.readStream(rxStream, [samples_buffer], len(samples_buffer), timeoutUs=int(2e6))
                 if sr.ret <= 0:
-                    logger.log(f"Stream SDR retornou: {sr.ret}. Verifique a conexão USB do HackRF.", "WARN")
+                    logger.log(f"Stream SDR retornou: {sr.ret}. Verifique a conexão USB.", "WARN")
                     continue
+                
                 chunk = samples_buffer[:sr.ret]
-                samples_real = (np.real(chunk) * 32767).astype(np.int16)
-                samples_imag = (np.imag(chunk) * 32767).astype(np.int16)
-                stereo_chunk = np.vstack((samples_real, samples_imag)).T
-                wf.writeframes(stereo_chunk.tobytes())
+
+                if mode == 'RAW':
+                    samples_real = (np.real(chunk) * 32767).astype(np.int16)
+                    samples_imag = (np.imag(chunk) * 32767).astype(np.int16)
+                    output_chunk = np.vstack((samples_real, samples_imag)).T
+                else:
+                    if mode == 'FM': x = np.diff(np.unwrap(np.angle(chunk)))
+                    else: x = np.abs(chunk) # AM
+                    decimation_factor = int(sample_rate / audio_sample_rate)
+                    if decimation_factor > 1: x = decimate(x, decimation_factor)
+                    x /= np.max(np.abs(x)) if np.max(np.abs(x)) > 0 else 1
+                    output_chunk = (x * 32767).astype(np.int16)
+                
+                wf.writeframes(output_chunk.tobytes())
                 samples_captured += sr.ret
     except Exception as e:
         logger.log(f"Erro CRÍTICO durante a captura: {e}", "ERROR")
@@ -75,9 +93,8 @@ def perform_capture(sdr, target_info):
 
     if os.path.exists(filepath) and samples_captured > 0:
         logger.log(f"Sinal salvo em: {filepath}", "SUCCESS")
-        
         image_path = None
-        if "NOAA" in target_info.get('name', ''):
+        if "NOAA" in target_info.get('name', '') and mode == 'RAW':
             image_path = decoder.decode_apt(filepath)
         
         db.insert_signal(
