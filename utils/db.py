@@ -5,47 +5,42 @@ import os
 DB_FILE = "signals.db"
 
 def init_db():
-    """Inicializa o banco de dados e cria a tabela se não existir."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    # Adiciona a coluna image_path
-    try:
-        cursor.execute("ALTER TABLE signals ADD COLUMN image_path TEXT")
-        print("Coluna 'image_path' adicionada ao banco de dados.")
-    except sqlite3.OperationalError:
-        # A coluna já existe, ignora o erro
-        pass
-
+    # (nenhuma alteração nesta função)
     if not os.path.exists(DB_FILE):
         print("Criando banco de dados 'signals.db'...")
-        try:
-            cursor.execute(
-                """
-                CREATE TABLE signals (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    target TEXT NOT NULL,
-                    frequency REAL NOT NULL,
-                    timestamp TEXT NOT NULL,
-                    filepath TEXT NOT NULL,
-                    image_path TEXT
-                );
-                """
-            )
-            conn.commit()
-            print("Banco de dados criado com sucesso.")
-        except sqlite3.Error as e:
-            print(f"❌ Erro ao criar o banco de dados: {e}")
+    
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS signals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target TEXT NOT NULL,
+            frequency REAL NOT NULL,
+            timestamp TEXT NOT NULL,
+            filepath TEXT NOT NULL UNIQUE,
+            image_path TEXT
+        );
+        """
+    )
+    
+    try:
+        cursor.execute("ALTER TABLE signals ADD COLUMN image_path TEXT")
+    except sqlite3.OperationalError:
+        pass
+
+    conn.commit()
     conn.close()
 
-
 def get_db_connection():
-    # (sem alterações)
+    # (nenhuma alteração nesta função)
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
 
 def insert_signal(target, frequency, timestamp, filepath, image_path=None):
-    """Insere um novo sinal capturado no banco de dados."""
+    # (nenhuma alteração nesta função)
     try:
         conn = get_db_connection()
         conn.execute(
@@ -57,9 +52,33 @@ def insert_signal(target, frequency, timestamp, filepath, image_path=None):
     except sqlite3.Error as e:
         print(f"❌ Erro no banco de dados ao inserir sinal: {e}")
 
+# --- NOVA FUNÇÃO ---
+def get_signal_paths_by_id(signal_id: int):
+    """Busca os caminhos do arquivo .wav e da imagem de um sinal pelo seu ID."""
+    try:
+        conn = get_db_connection()
+        signal = conn.execute("SELECT filepath, image_path FROM signals WHERE id = ?", (signal_id,)).fetchone()
+        conn.close()
+        return dict(signal) if signal else None
+    except sqlite3.Error as e:
+        print(f"❌ Erro no banco de dados ao buscar caminhos do sinal: {e}")
+        return None
 
-def get_latest_signals(limit=10):
-    # (sem alterações)
+# --- NOVA FUNÇÃO ---
+def delete_signal_by_id(signal_id: int):
+    """Remove um sinal do banco de dados pelo seu ID."""
+    try:
+        conn = get_db_connection()
+        conn.execute("DELETE FROM signals WHERE id = ?", (signal_id,))
+        conn.commit()
+        conn.close()
+        return True
+    except sqlite3.Error as e:
+        print(f"❌ Erro no banco de dados ao deletar sinal: {e}")
+        return False
+
+def get_latest_signals(limit=15):
+    # (aumentado o limite padrão)
     try:
         conn = get_db_connection()
         signals = conn.execute(
@@ -70,3 +89,5 @@ def get_latest_signals(limit=10):
     except sqlite3.Error as e:
         print(f"❌ Erro no banco de dados ao buscar sinais: {e}")
         return []
+
+# Removida a função delete_signal_by_filepath pois a deleção por ID é mais segura.

@@ -1,113 +1,124 @@
 <!DOCTYPE html>
 <html lang="pt-BR" class="dark">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RFSentinel - Painel de Controle</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/heroicons/2.1.3/24/outline/heroicons.min.css" rel="stylesheet">
     <style>
-        body { background-color: #111827; color: #d1d5db; }
-        .status-active { color: #22c55e; text-shadow: 0 0 8px #22c55e; }
-        .status-stopped { color: #ef4444; text-shadow: 0 0 8px #ef4444; }
-        #activity-log { height: 150px; background-color: #0c121e; border: 1px solid #374151; border-radius: 0.5rem; padding: 0.75rem; font-family: monospace; font-size: 0.8rem; overflow-y: scroll; white-space: pre-wrap; color: #9ca3af; }
+        body { background-color: #0f172a; color: #e2e8f0; font-family: 'Inter', sans-serif; }
+        .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); }
+        .status-led { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 0.75rem; transition: background-color 0.3s; }
+        .status-active { background-color: #22c55e; box-shadow: 0 0 8px #22c55e; }
+        .status-stopped { background-color: #ef4444; box-shadow: 0 0 8px #ef4444; }
+        .status-off { background-color: #64748b; }
+        .btn { padding: 0.5rem 1rem; font-weight: 600; border-radius: 0.5rem; transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; }
+        .btn-primary { background-color: #4f46e5; color: white; } .btn-primary:hover { background-color: #6366f1; }
+        .btn-success { background-color: #16a34a; color: white; } .btn-success:hover { background-color: #22c55e; } .btn-success:disabled { background-color: #166534; color: #a3a3a3; cursor: not-allowed;}
+        .btn-danger { background-color: #dc2626; color: white; } .btn-danger:hover { background-color: #ef4444; }
+        #activity-log { height: 200px; background-color: #020617; border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem; font-family: 'Fira Code', monospace; font-size: 0.8rem; overflow-y: scroll; white-space: pre-wrap; color: #94a3b8; }
+        select { background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e"); background-position: right 0.5rem center; background-repeat: no-repeat; background-size: 1.5em 1.5em; padding-right: 2.5rem; -webkit-appearance: none; -moz-appearance: none; appearance: none; }
+        @import url('https://rsms.me/inter/inter.css');
+        @import url('https://fonts.googleapis.com/css2?family=Fira+Code&display=swap');
     </style>
 </head>
-
-<body class="p-4 sm:p-8">
+<body class="p-4 sm:p-6">
     <div class="max-w-7xl mx-auto">
         <header class="text-center mb-8">
-            <h1 class="text-4xl font-bold text-gray-100">📡 RFSentinel</h1>
-            <p class="text-lg text-gray-400">Centro de Controle da Estação Terrestre</p>
+            <h1 class="text-4xl font-bold text-slate-100 flex items-center justify-center gap-4">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-10 h-10 text-indigo-400"><path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.136 12.006a8.25 8.25 0 0 1 13.728 0M2 8.974a12 12 0 0 1 20 0M16.5 7.5a.75.75 0 0 0-1.5 0v1.5a.75.75 0 0 0 1.5 0V7.5Zm-4.5 0a.75.75 0 0 0-1.5 0v1.5a.75.75 0 0 0 1.5 0V7.5Z" /></svg>
+                RFSentinel
+            </h1>
+            <p class="text-lg text-slate-400 mt-2">Centro de Controle da Estação Terrestre</p>
         </header>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-            <div class="lg:col-span-1 space-y-8">
-                <div class="bg-gray-800 rounded-lg shadow-lg p-6">
-                    <h2 class="text-2xl font-semibold text-gray-200">Status do Hardware</h2>
-                    <p id="hackrf-status-text" class="text-xl font-bold mt-1">Verificando...</p>
-                </div>
-                <div class="bg-gray-800 rounded-lg shadow-lg p-6">
-                    <div class="flex justify-between items-center">
-                        <div>
-                            <h2 class="text-2xl font-semibold text-gray-200">Scanner de Satélites</h2>
-                            <p id="scanner-status-text" class="text-xl font-bold mt-1">Verificando...</p>
-                        </div>
-                        <button id="toggle-button" class="px-6 py-2 font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">Ativar/Parar</button>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div class="md:col-span-2 lg:col-span-1 flex flex-col gap-6">
+                <div class="card">
+                    <h2 class="text-xl font-semibold text-slate-200 mb-4">Status do Sistema</h2>
+                    <div class="space-y-3">
+                        <div class="flex items-center"><span id="hackrf-status-led" class="status-led status-off"></span><span id="hackrf-status-text">Verificando...</span></div>
+                        <div class="flex items-center"><span id="scanner-status-led" class="status-led status-off"></span><span id="scanner-status-text">Verificando...</span></div>
                     </div>
                 </div>
-                
-                <div class="bg-gray-800 rounded-lg shadow-lg p-6">
-                    <h2 class="text-2xl font-semibold text-gray-200 mb-4">Captura Manual</h2>
+
+                <div class="card">
+                    <h2 class="text-xl font-semibold text-slate-200 mb-4">Controle do Scanner</h2>
+                    <p class="text-slate-400 mb-4 text-sm">Ativa ou pausa o agendador de capturas automáticas de satélites.</p>
+                    <button id="toggle-button" class="btn btn-primary w-full justify-center">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M4 19h5v-5M20 4h-5v5M20 19h-5v-5"></path></svg>
+                        <span id="toggle-button-text">Ativar/Parar</span>
+                    </button>
+                </div>
+
+                <div class="card">
+                    <h2 class="text-xl font-semibold text-slate-200 mb-4">Captura Manual</h2>
                     <div class="space-y-4">
                         <div>
-                            <label for="capture-name" class="text-sm font-medium text-gray-400">Nome da Captura</label>
-                            <input type="text" id="capture-name" placeholder="Ex: Rádio local" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                            <label for="capture-mode" class="text-sm font-medium text-slate-400">Modo de Captura</label>
+                            <select id="capture-mode" class="mt-1 block w-full bg-slate-800 border border-slate-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                                <option value="RAW">RAW (I/Q para Análise)</option>
+                                <option value="FM">FM (Áudio Ouvível)</option>
+                                <option value="AM">AM (Áudio Ouvível)</option>
+                            </select>
                         </div>
                         <div>
-                            <label for="capture-freq" class="text-sm font-medium text-gray-400">Frequência (MHz)</label>
-                            <input type="number" id="capture-freq" value="146.520" step="0.001" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                            <label for="capture-freq" class="text-sm font-medium text-slate-400">Frequência (MHz)</label>
+                            <input type="number" id="capture-freq" value="97.1" step="0.001" class="mt-1 block w-full bg-slate-800 border border-slate-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
                         </div>
                         <div>
-                            <label for="capture-duration" class="text-sm font-medium text-gray-400">Duração (segundos)</label>
-                            <input type="number" id="capture-duration" value="30" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                            <label for="capture-sample-rate" class="text-sm font-medium text-slate-400">Largura de Banda (Taxa Amostragem)</label>
+                            <select id="capture-sample-rate" class="mt-1 block w-full bg-slate-800 border border-slate-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                                <option value="2.4e6">2.4 MHz</option>
+                                <option value="2e6">2.0 MHz</option>
+                                <option value="4e6">4.0 MHz</option>
+                                <option value="8e6">8.0 MHz</option>
+                                <option value="10e6">10 MHz</option>
+                            </select>
                         </div>
-                        <button id="manual-capture-button" class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-                            Gravar
+                        <div>
+                            <label for="capture-duration" class="text-sm font-medium text-slate-400">Duração (segundos)</label>
+                            <input type="number" id="capture-duration" value="15" class="mt-1 block w-full bg-slate-800 border border-slate-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <button id="manual-capture-button" class="btn btn-success w-full justify-center">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.82m5.84-2.56a14.98 14.98 0 00-11.61 0m11.61 0a14.98 14.98 0 0111.61 0m-11.61 0a6 6 0 015.84-7.38v4.82"></path></svg>
+                            <span id="manual-capture-button-text">Gravar Sinal</span>
                         </button>
                     </div>
                 </div>
             </div>
 
-            <div class="lg:col-span-2 space-y-8">
-                 <div class="bg-gray-800 rounded-lg shadow-lg p-6">
-                    <h2 class="text-2xl font-semibold text-gray-200 mb-2">Próxima Captura Agendada</h2>
-                    <p class="text-lg text-gray-400">Alvo: <span id="next-target" class="font-bold text-gray-200">Nenhum</span></p>
-                    <p class="text-lg text-gray-400">Horário (UTC): <span id="next-time" class="font-bold text-gray-200">--:--:--</span></p>
-                    <p class="text-2xl text-cyan-400 mt-2" id="next-countdown">Aguardando...</p>
-                </div>
-                <div class="bg-gray-800 rounded-lg shadow-lg p-6">
-                    <h2 class="text-2xl font-semibold text-gray-200 mb-4">Log de Atividades</h2>
-                    <div id="activity-log"></div>
-                </div>
-
-                <div class="bg-gray-800 rounded-lg shadow-lg p-6">
-                    <div class="flex justify-between items-center mb-4 flex-wrap gap-4">
-                        <h2 class="text-2xl font-semibold text-gray-200">Waterfall Interativo</h2>
-                        <div class="flex items-center space-x-4">
-                            <div>
-                                <label for="wf-freq" class="text-sm text-gray-400">Freq. (MHz)</label>
-                                <input type="number" id="wf-freq" value="101.1" step="0.1" class="bg-gray-700 text-white rounded px-2 py-1 w-24">
-                            </div>
-                            <div>
-                                <label for="wf-gain" class="text-sm text-gray-400">Ganho</label>
-                                <input type="range" id="wf-gain" min="0" max="40" step="1" value="32" class="align-middle">
-                                <span id="wf-gain-label" class="text-sm text-gray-300">32</span>
-                            </div>
-                            <button id="wf-update" class="px-4 py-1 bg-indigo-600 hover:bg-indigo-700 rounded text-white font-semibold">Aplicar</button>
+            <div class="md:col-span-2 lg:col-span-2 flex flex-col gap-6">
+                 <div class="card">
+                    <h2 class="text-xl font-semibold text-slate-200 mb-3">Próxima Captura Agendada</h2>
+                    <div class="flex items-center gap-4">
+                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12 text-cyan-400"><path stroke-linecap="round" stroke-linejoin="round" d="M12.012 7.004a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm0 3.75a.75.75 0 0 0 0 1.5h.008a.75.75 0 0 0 0-1.5h-.008Zm0 3a.75.75 0 0 0 0 1.5h.008a.75.75 0 0 0 0-1.5h-.008Z" /><path stroke-linecap="round" stroke-linejoin="round" d="m14.25 8.25-1.25 1.25 1.25 1.25m-4.5-2.5-1.25 1.25 1.25 1.25" /><path stroke-linecap="round" stroke-linejoin="round" d="m3.75 12 16.5 0m-16.5 0L8.25 6m-4.5 6 4.5 6" /></svg>
+                        <div>
+                            <p class="text-lg text-slate-400">Alvo: <span id="next-target" class="font-bold text-slate-200">Nenhum</span></p>
+                            <p class="text-sm text-slate-400">Horário (UTC): <span id="next-time" class="font-bold text-slate-200">--:--:--</span></p>
+                            <p class="text-2xl text-cyan-400 mt-1" id="next-countdown">Aguardando...</p>
                         </div>
                     </div>
-                    <div class="grid grid-cols-[50px_1fr] gap-x-2">
-                        <canvas id="power-axis" class="w-full h-64"></canvas>
-                        <canvas id="waterfall-canvas" class="w-full h-64 bg-black rounded-sm"></canvas>
-                        <div></div> <canvas id="freq-axis" class="w-full h-6"></canvas>
-                    </div>
+                </div>
+                <div class="card flex-grow flex flex-col">
+                    <h2 class="text-xl font-semibold text-slate-200 mb-4">Log de Atividades</h2>
+                    <div id="activity-log" class="flex-grow"></div>
                 </div>
             </div>
 
-            <div class="lg:col-span-3 bg-gray-800 rounded-lg shadow-lg p-6">
-                <h2 class="text-2xl font-semibold text-gray-200 mb-4">Histórico de Capturas</h2>
+            <div class="md:col-span-2 lg:col-span-3 card">
+                <h2 class="text-2xl font-semibold text-slate-200 mb-4">Histórico de Capturas</h2>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left">
-                        <thead>
-                            <tr class="border-b border-gray-600 text-gray-400">
+                        <thead class="border-b border-slate-600 text-slate-400">
+                            <tr>
                                 <th class="p-3">Alvo</th>
                                 <th class="p-3">Frequência</th>
-                                <th class="p-3">Timestamp</th>
+                                <th class="p-3">Data/Hora (Local)</th>
                                 <th class="p-3">Áudio</th>
-                                <th class="p-3">Imagem</th>
-                                <th class="p-3">Ações</th>
+                                <th class="p-3 text-center">Imagem</th>
+                                <th class="p-3 text-center">Ações</th>
                             </tr>
                         </thead>
                         <tbody id="signals-table"></tbody>
@@ -116,286 +127,215 @@
             </div>
         </div>
 
-        <footer class="text-center mt-8 text-gray-500">
+        <footer class="text-center mt-8 text-slate-500">
             <p>Desenvolvido por Lucas Cardoso Gomes.</p>
         </footer>
     </div>
-
-    <script>
-        const RFSentinelApp = {
-            elements: {
+    
+<script>
+    const RFSentinelApp = {
+        elements: {},
+        state: {},
+        init() {
+            this.elements = {
+                hackrfStatusLed: document.getElementById('hackrf-status-led'),
                 hackrfStatusText: document.getElementById('hackrf-status-text'),
+                scannerStatusLed: document.getElementById('scanner-status-led'),
                 scannerStatusText: document.getElementById('scanner-status-text'),
                 toggleButton: document.getElementById('toggle-button'),
+                toggleButtonText: document.getElementById('toggle-button-text'),
                 signalsTable: document.getElementById('signals-table'),
                 activityLog: document.getElementById('activity-log'),
                 nextTarget: document.getElementById('next-target'),
                 nextTime: document.getElementById('next-time'),
                 nextCountdown: document.getElementById('next-countdown'),
                 manualCaptureButton: document.getElementById('manual-capture-button'),
+                manualCaptureButtonText: document.getElementById('manual-capture-button-text'),
                 captureNameInput: document.getElementById('capture-name'),
                 captureFreqInput: document.getElementById('capture-freq'),
+                captureSampleRateInput: document.getElementById('capture-sample-rate'),
                 captureDurationInput: document.getElementById('capture-duration'),
-                wfCanvas: document.getElementById('waterfall-canvas'),
-                wfCtx: document.getElementById('waterfall-canvas').getContext('2d'),
-                wfFreqAxisCanvas: document.getElementById('freq-axis'),
-                wfFreqCtx: document.getElementById('freq-axis').getContext('2d'),
-                wfPowerAxisCanvas: document.getElementById('power-axis'),
-                wfPowerCtx: document.getElementById('power-axis').getContext('2d'),
-                wfFreqInput: document.getElementById('wf-freq'),
-                wfGainInput: document.getElementById('wf-gain'),
-                wfGainLabel: document.getElementById('wf-gain-label'),
-                wfUpdateButton: document.getElementById('wf-update'),
-            },
-            state: {
+                captureModeInput: document.getElementById('capture-mode'),
+            };
+            this.state = {
                 countdownInterval: null,
-                waterfall: {
-                    ws: null,
-                    tempCanvas: document.createElement('canvas'),
-                    metadata: { sample_rate: 2.4e6, center_freq: 101.1e6 }
+                lastLogLength: 0
+            };
+            this.elements.toggleButton.addEventListener('click', () => this.api.toggleScanner());
+            this.elements.manualCaptureButton.addEventListener('click', () => this.api.startManualCapture());
+            this.elements.signalsTable.addEventListener('click', (event) => {
+                const deleteButton = event.target.closest('.delete-btn');
+                if (deleteButton) {
+                    const signalId = deleteButton.dataset.signalId;
+                    this.api.deleteSignal(signalId);
+                }
+            });
+            this.updateLoop();
+        },
+        updateLoop() {
+            this.api.fetchStatus();
+            this.api.fetchSignals();
+            setInterval(() => this.api.fetchStatus(), 2000);
+            setInterval(() => this.api.fetchSignals(), 10000);
+        },
+        api: {
+            async fetchStatus() {
+                try {
+                    const response = await fetch('/api/status');
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const data = await response.json();
+                    RFSentinelApp.ui.renderStatus(data);
+                } catch (error) {
+                    console.error('Erro ao buscar status:', error);
                 }
             },
-            
-            init() {
-                this.elements.toggleButton.addEventListener('click', () => this.api.toggleScanner());
-                this.elements.manualCaptureButton.addEventListener('click', () => this.api.startManualCapture());
-                this.elements.wfUpdateButton.addEventListener('click', () => this.waterfall.updateSettings());
-                this.elements.wfGainInput.addEventListener('input', () => {
-                    this.elements.wfGainLabel.textContent = this.elements.wfGainInput.value;
-                });
-                
-                window.addEventListener('resize', () => this.waterfall.resize());
-                
-                this.updateLoop();
-                this.waterfall.init();
-            },
-
-            updateLoop() {
-                this.api.fetchStatus();
-                this.api.fetchSignals();
-                setInterval(() => {
-                    this.api.fetchStatus();
-                }, 2000);
-                setInterval(() => {
-                    this.api.fetchSignals();
-                }, 10000);
-            },
-            
-            api: {
-                async fetchStatus() {
-                    try {
-                        const response = await fetch('/api/status');
-                        const data = await response.json();
-                        RFSentinelApp.ui.renderStatus(data);
-                    } catch (error) { console.error('Erro ao buscar status:', error); }
-                },
-                async fetchSignals() {
-                    try {
-                        const response = await fetch('/api/signals');
-                        const signals = await response.json();
-                        RFSentinelApp.ui.renderSignals(signals);
-                    } catch (error) { console.error('Erro ao buscar sinais:', error); }
-                },
-                async toggleScanner() { await fetch('/scanner/toggle', { method: 'POST' }); },
-                async startManualCapture() {
-                    RFSentinelApp.elements.manualCaptureButton.disabled = true;
-                    try {
-                        const response = await fetch('/api/capture/manual', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                name: RFSentinelApp.elements.captureNameInput.value || 'ManualCapture',
-                                frequency_mhz: RFSentinelApp.elements.captureFreqInput.value,
-                                duration_sec: RFSentinelApp.elements.captureDurationInput.value
-                            })
-                        });
-                        if (!response.ok) alert(`Erro: ${(await response.json()).error}`);
-                    } catch (e) {
-                        alert('Falha ao iniciar captura.');
-                        RFSentinelApp.elements.manualCaptureButton.disabled = false;
-                    }
+            async fetchSignals() {
+                try {
+                    const response = await fetch('/api/signals');
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const signals = await response.json();
+                    RFSentinelApp.ui.renderSignals(signals);
+                } catch (error) {
+                    console.error('Erro ao buscar sinais:', error);
                 }
             },
-            
-            ui: {
-                renderStatus(data) {
-                    const { elements } = RFSentinelApp;
-                    elements.scannerStatusText.textContent = data.scanner_status;
-                    elements.scannerStatusText.className = `text-xl font-bold mt-1 ${data.scanner_status === 'Ativo' ? 'status-active' : 'status-stopped'}`;
-                    elements.hackrfStatusText.textContent = data.hackrf_status.status_text;
-                    elements.hackrfStatusText.className = `text-xl font-bold mt-1 ${data.hackrf_status.connected ? 'status-active' : 'status-stopped'}`;
-                    if(data.scheduler_log) this.renderLogs(data.scheduler_log);
-
-                    if(data.next_pass) {
-                        const pass = data.next_pass;
-                        elements.nextTarget.textContent = pass.name;
-                        const startTime = new Date(pass.start_utc);
-                        elements.nextTime.textContent = startTime.toUTCString().substring(5, 25);
-                        this.updateCountdown(startTime);
-                    } else {
-                        elements.nextTarget.textContent = 'Nenhum';
-                        elements.nextTime.textContent = '--:--:--';
-                        elements.nextCountdown.textContent = 'Aguardando...';
-                        clearInterval(RFSentinelApp.state.countdownInterval);
-                    }
-
-                    const btn = elements.manualCaptureButton;
-                    const isCapturing = data.manual_capture_active;
-                    btn.disabled = isCapturing;
-                    btn.textContent = isCapturing ? 'Gravando...' : 'Gravar';
-                    const [removeBg, addBg] = isCapturing ? ['bg-green-600', 'hover:bg-green-700', 'bg-red-600', 'hover:bg-red-700'] : ['bg-red-600', 'hover:bg-red-700', 'bg-green-600', 'hover:bg-green-700'];
-                    btn.classList.remove(removeBg, addBg.split(' ')[1]);
-                    btn.classList.add(addBg.split(' ')[0], addBg.split(' ')[1]);
-                },
-                
-                renderSignals(signals) {
-                    const { signalsTable } = RFSentinelApp.elements;
-                    signalsTable.innerHTML = '';
-                    if (!signals || signals.length === 0) {
-                        signalsTable.innerHTML = '<tr><td colspan="6" class="text-center p-4">Nenhuma captura registrada ainda.</td></tr>';
-                        return;
-                    }
-
-                    signals.forEach(signal => {
-                        const freqMhz = (signal.frequency / 1000000).toFixed(3);
-                        let imageCell = '<td class="p-3">N/A</td>';
-                        
-                        if (signal.filepath && signal.filepath.toLowerCase().includes("noaa")) {
-                            const base_filename = signal.filepath.split(/[\\\/]/).pop().replace('.wav', '.png');
-                            const image_path = `captures/images/${base_filename}`;
-                            imageCell = `<td class="p-3"><a href="/${image_path}" target="_blank" title="Ver imagem decodificada"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-400 hover:text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></a></td>`;
-                        }
-
-                        const row = `
-                            <tr class="border-b border-gray-700 hover:bg-gray-700/50">
-                                <td class="p-3">${signal.target}</td>
-                                <td class="p-3">${freqMhz} MHz</td>
-                                <td class="p-3">${(signal.timestamp || '').replace('_', ' ')}</td>
-                                <td class="p-3 font-mono"><a href="/${signal.filepath}" download class="text-blue-400 hover:underline">${signal.filepath.split(/[\\\/]/).pop()}</a></td>
-                                ${imageCell}
-                                <td class="p-3"><a href="/analysis?id=${signal.id}" target="_blank" class="text-indigo-400 hover:underline">Analisar</a></td>
-                            </tr>
-                        `;
-                        signalsTable.innerHTML += row;
+            async toggleScanner() {
+                try {
+                    await fetch('/scanner/toggle', { method: 'POST' });
+                    RFSentinelApp.api.fetchStatus();
+                } catch (error) {
+                    console.error('Erro ao alternar scanner:', error);
+                }
+            },
+            async startManualCapture() {
+                const { elements } = RFSentinelApp;
+                elements.manualCaptureButton.disabled = true;
+                elements.manualCaptureButtonText.textContent = 'Enviando...';
+                try {
+                    const response = await fetch('/api/capture/manual', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: elements.captureNameInput.value || 'ManualCapture',
+                            frequency_mhz: elements.captureFreqInput.value,
+                            duration_sec: elements.captureDurationInput.value,
+                            sample_rate: parseFloat(elements.captureSampleRateInput.value),
+                            mode: elements.captureModeInput.value
+                        })
                     });
-                },
-                
-                renderLogs(logs) {
-                    const logColors = {'INFO': 'text-gray-400', 'SUCCESS': 'text-green-400', 'WARN': 'text-yellow-400', 'ERROR': 'text-red-400', 'DEBUG': 'text-purple-400'};
-                    RFSentinelApp.elements.activityLog.innerHTML = logs.map(log => 
-                        `<span class="${logColors[log.level] || 'text-gray-400'}">[${log.timestamp}] ${log.message}</span>`
-                    ).join('<br>');
-                    RFSentinelApp.elements.activityLog.scrollTop = RFSentinelApp.elements.activityLog.scrollHeight;
-                },
-
-                updateCountdown(targetDate) {
-                    clearInterval(RFSentinelApp.state.countdownInterval);
-                    RFSentinelApp.state.countdownInterval = setInterval(() => {
-                        const diff = targetDate - new Date();
-                        if (diff <= 0) {
-                            RFSentinelApp.elements.nextCountdown.textContent = "Em andamento...";
-                            clearInterval(RFSentinelApp.state.countdownInterval);
-                            return;
-                        }
-                        const h = Math.floor(diff / 3.6e6);
-                        const m = Math.floor((diff % 3.6e6) / 6e4);
-                        const s = Math.floor((diff % 6e4) / 1000);
-                        RFSentinelApp.elements.nextCountdown.textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-                    }, 1000);
+                    if (!response.ok) {
+                        const err = await response.json();
+                        alert(`Erro: ${err.error}`);
+                    }
+                } catch (e) {
+                    alert('Falha ao enviar comando de captura.');
                 }
             },
-            
-            waterfall: {
-                init() {
-                    this.state = RFSentinelApp.state.waterfall;
-                    this.elements = RFSentinelApp.elements;
-                    this.state.tempCtx = this.state.tempCanvas.getContext('2d');
-                    this.resize();
-                    this.drawPowerAxis();
-                    this.connect();
-                },
-                resize() {
-                    [this.elements.wfCanvas, this.elements.wfFreqAxisCanvas, this.elements.wfPowerAxisCanvas, this.state.tempCanvas].forEach(c => {
-                        c.width = c.offsetWidth;
-                        c.height = c.offsetHeight;
+            async deleteSignal(signalId) {
+                if (!confirm(`Tem certeza que deseja apagar o sinal ID ${signalId} e seus arquivos?`)) {
+                    return;
+                }
+                try {
+                    const response = await fetch(`/api/signal/delete/${signalId}`, {
+                        method: 'DELETE'
                     });
-                    this.drawPowerAxis();
-                    this.drawFreqAxis();
-                },
-                connect() {
-                    if (this.state.ws && this.state.ws.readyState !== WebSocket.CLOSED) this.state.ws.close();
-                    this.state.ws = new WebSocket(`ws://${window.location.host}/ws/waterfall`);
-                    this.state.ws.onopen = () => console.log("WebSocket conectado.");
-                    this.state.ws.onmessage = (event) => {
-                        const msg = JSON.parse(event.data);
-                        if (msg.type === 'metadata') {
-                            Object.assign(this.state.metadata, msg);
-                            this.drawFreqAxis();
-                        } else if (msg.type === 'fft_data') {
-                            this.draw(msg.data);
-                        }
-                    };
-                    this.state.ws.onclose = (event) => {
-                        const message = event.code === 1012 ? 'SDR em uso. Reconectando...' : 'Conexão Perdida. Reconectando...';
-                        const color = event.code === 1012 ? 'orange' : 'red';
-                        this.elements.wfCtx.fillStyle = color;
-                        this.elements.wfCtx.fillText(message, this.elements.wfCanvas.width / 2, this.elements.wfCanvas.height / 2);
-                        setTimeout(() => this.connect(), event.code === 1012 ? 15000 : 5000);
-                    };
-                },
-                draw(data) {
-                    const { wfCtx, wfCanvas } = this.elements;
-                    const { tempCtx, tempCanvas } = this.state;
-                    tempCtx.drawImage(wfCanvas, 0, 0);
-                    wfCtx.clearRect(0, 0, wfCanvas.width, wfCanvas.height);
-                    wfCtx.drawImage(tempCanvas, 0, 1);
-                    const segmentWidth = wfCanvas.width / data.length;
-                    const getColor = (v) => `hsl(${(1 - Math.max(0, Math.min(1, (v - -80) / 60))) * 240}, 100%, 50%)`;
-                    for (let i = 0; i < data.length; i++) {
-                        wfCtx.fillStyle = getColor(data[i]);
-                        wfCtx.fillRect(i * segmentWidth, 0, Math.ceil(segmentWidth), 1);
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.error || 'Falha ao apagar o sinal.');
                     }
-                },
-                drawFreqAxis() {
-                    const { wfFreqCtx, wfFreqAxisCanvas } = this.elements;
-                    const { metadata } = this.state;
-                    wfFreqCtx.clearRect(0, 0, wfFreqAxisCanvas.width, wfFreqAxisCanvas.height);
-                    wfFreqCtx.fillStyle = '#9ca3af';
-                    wfFreqCtx.font = '10px monospace';
-                    const startFreq = (metadata.center_freq - metadata.sample_rate / 2) / 1e6;
-                    const endFreq = (metadata.center_freq + metadata.sample_rate / 2) / 1e6;
-                    for (let i = 0; i <= 10; i++) {
-                        const freq = startFreq + (endFreq - startFreq) * (i / 10);
-                        const x = (wfFreqAxisCanvas.width / 10) * i;
-                        wfFreqCtx.fillText(`${freq.toFixed(1)}`, x, 10);
-                    }
-                },
-                drawPowerAxis() {
-                    const { wfPowerCtx, wfPowerAxisCanvas } = this.elements;
-                    wfPowerCtx.clearRect(0, 0, wfPowerAxisCanvas.width, wfPowerAxisCanvas.height);
-                    wfPowerCtx.fillStyle = '#9ca3af';
-                    wfPowerCtx.font = '10px monospace';
-                    const minDb = -80, maxDb = -20;
-                    for (let i = 0; i <= 10; i++) {
-                        const db = maxDb - (maxDb - minDb) * (i / 10);
-                        const y = (wfPowerAxisCanvas.height / 10) * i;
-                        wfPowerCtx.fillText(`${db.toFixed(0)}dB`, 5, y + 10);
-                    }
-                },
-                updateSettings() {
-                    const { wfFreqInput, wfGainInput } = RFSentinelApp.elements;
-                    const { ws } = this.state;
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({ 
-                            frequency: parseFloat(wfFreqInput.value) * 1e6, 
-                            gain: parseInt(wfGainInput.value) 
-                        }));
-                    }
+                    document.querySelector(`tr[data-signal-id='${signalId}']`).style.opacity = 0;
+                    setTimeout(() => RFSentinelApp.api.fetchSignals(), 500);
+                } catch (error) {
+                    console.error('Erro ao apagar sinal:', error);
+                    alert(`Não foi possível apagar o sinal: ${error.message}`);
                 }
             }
-        };
+        },
+        ui: {
+            renderStatus(data) {
+                const { elements } = RFSentinelApp;
+                elements.hackrfStatusText.textContent = data.hackrf_status.status_text;
+                elements.hackrfStatusLed.className = `status-led ${data.hackrf_status.connected ? 'status-active' : 'status-stopped'}`;
+                elements.scannerStatusText.textContent = `Scanner: ${data.scanner_status}`;
+                elements.scannerStatusLed.className = `status-led ${data.scanner_status === 'Ativo' ? 'status-active' : 'status-stopped'}`;
+                elements.toggleButtonText.textContent = data.scanner_status === 'Ativo' ? 'Pausar Scanner' : 'Ativar Scanner';
+                elements.toggleButton.className = `btn w-full justify-center ${data.scanner_status === 'Ativo' ? 'btn-danger' : 'btn-primary'}`;
+                if (data.scheduler_log && data.scheduler_log.length !== RFSentinelApp.state.lastLogLength) {
+                    this.renderLogs(data.scheduler_log);
+                    RFSentinelApp.state.lastLogLength = data.scheduler_log.length;
+                }
+                if (data.next_pass) {
+                    const pass = data.next_pass;
+                    elements.nextTarget.textContent = pass.name;
+                    const startTime = new Date(pass.start_utc);
+                    elements.nextTime.textContent = startTime.toUTCString().substring(5, 25);
+                    this.updateCountdown(startTime);
+                } else {
+                    elements.nextTarget.textContent = 'Nenhum';
+                    elements.nextTime.textContent = '--:--:--';
+                    elements.nextCountdown.textContent = 'Aguardando agendamento...';
+                    clearInterval(RFSentinelApp.state.countdownInterval);
+                }
+                const btn = elements.manualCaptureButton;
+                const isCapturing = data.manual_capture_active || data.is_scheduler_capturing;
+                btn.disabled = isCapturing;
+                if (data.manual_capture_active) {
+                    elements.manualCaptureButtonText.textContent = 'Gravando Manualmente...';
+                } else if (data.is_scheduler_capturing) {
+                    elements.manualCaptureButtonText.textContent = 'Captura Agendada Ativa';
+                } else {
+                    elements.manualCaptureButtonText.textContent = 'Gravar Sinal';
+                }
+            },
+            renderSignals(signals) {
+                const { signalsTable } = RFSentinelApp.elements;
+                let newContent = '';
+                if (!signals || signals.length === 0) {
+                    newContent = '<tr><td colspan="6" class="text-center p-4 text-slate-400">Nenhuma captura registrada ainda.</td></tr>';
+                } else {
+                    newContent = signals.map(signal => {
+                        const freqMhz = (signal.frequency / 1e6).toFixed(3);
+                        const localTimestamp = new Date(signal.timestamp.replace('_', 'T') + 'Z').toLocaleString('pt-BR');
+                        const fileName = signal.filepath.split(/[\\\/]/).pop();
+                        let imageCell = '<td class="p-3 text-center text-slate-500">N/A</td>';
+                        if (signal.image_path) {
+                            imageCell = `<td class="p-3 text-center"><a href="/${signal.image_path}" target="_blank" title="Ver imagem" class="text-indigo-400 hover:text-indigo-300 inline-block"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" /></svg></a></td>`;
+                        }
+                        const isRaw = signal.target.toLowerCase().includes('_raw');
+                        const analysisLink = isRaw ? `<a href="/analysis?id=${signal.id}" target="_blank" class="text-indigo-400 hover:underline mr-4">Analisar</a>` : `<span class="text-slate-500 mr-4">Analisar</span>`;
 
-        document.addEventListener('DOMContentLoaded', () => RFSentinelApp.init());
-    </script>
+                        return `<tr class="border-b border-slate-700 hover:bg-slate-800/50" style="transition: opacity 0.5s;" data-signal-id="${signal.id}"><td class="p-3 font-semibold text-slate-300">${signal.target}</td><td class="p-3">${freqMhz} MHz</td><td class="p-3">${localTimestamp}</td><td class="p-3"><a href="/${signal.filepath}" download class="text-blue-400 hover:underline flex items-center gap-2"><svg class="w-4 h-4" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>${fileName}</a></td>${imageCell}<td class="p-3 text-center">${analysisLink}<button class="text-red-400 hover:text-red-300 delete-btn" data-signal-id="${signal.id}" title="Apagar Sinal"><svg class="w-6 h-6 inline-block" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg></button></td></tr>`;
+                    }).join('');
+                }
+                if (signalsTable.innerHTML !== newContent) {
+                    signalsTable.innerHTML = newContent;
+                }
+            },
+            renderLogs(logs) {
+                const logColors = {'INFO': 'text-sky-400', 'SUCCESS': 'text-green-400', 'WARN': 'text-yellow-400', 'ERROR': 'text-red-400', 'DEBUG': 'text-purple-400'};
+                RFSentinelApp.elements.activityLog.innerHTML = logs.map(log => `<div class="flex"><span class="text-slate-500 mr-2 flex-shrink-0">[${log.timestamp}]</span><span class="${logColors[log.level] || 'text-slate-400'}">${log.message}</span></div>`).join('');
+                RFSentinelApp.elements.activityLog.scrollTop = RFSentinelApp.elements.activityLog.scrollHeight;
+            },
+            updateCountdown(targetDate) {
+                clearInterval(RFSentinelApp.state.countdownInterval);
+                const update = () => {
+                    const diff = targetDate - new Date();
+                    if (diff <= 0) {
+                        RFSentinelApp.elements.nextCountdown.textContent = "Captura em andamento...";
+                        clearInterval(RFSentinelApp.state.countdownInterval);
+                        return;
+                    }
+                    const h = Math.floor(diff / 3.6e6);
+                    const m = Math.floor((diff % 3.6e6) / 6e4);
+                    const s = Math.floor((diff % 6e4) / 1000);
+                    RFSentinelApp.elements.nextCountdown.textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                };
+                update();
+                RFSentinelApp.state.countdownInterval = setInterval(update, 1000);
+            }
+        }
+    };
+    document.addEventListener('DOMContentLoaded', () => RFSentinelApp.init());
+</script>
 </body>
 </html>

@@ -7,28 +7,41 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.plot.ly/plotly-2.32.0.min.js" charset="utf-8"></script>
     <style>
-        body { background-color: #111827; color: #d1d5db; }
+        body { background-color: #0f172a; color: #e2e8f0; font-family: 'Inter', sans-serif; }
+        .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; padding: 1.5rem; }
+        .btn { padding: 0.5rem 1rem; font-weight: 600; border-radius: 0.5rem; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; cursor: pointer; }
+        .btn-primary { background-color: #4f46e5; color: white; } .btn-primary:hover { background-color: #6366f1; }
+        @import url('https://rsms.me/inter/inter.css');
     </style>
 </head>
 <body class="p-4 sm:p-8">
     <div class="max-w-7xl mx-auto">
         <header class="text-center mb-8">
-            <h1 class="text-4xl font-bold text-gray-100">📡 Análise de Sinal Capturado</h1>
-            <p id="signal-info" class="text-lg text-gray-400">Carregando informações do sinal...</p>
+            <h1 class="text-4xl font-bold text-slate-100">📡 Análise de Sinal Capturado</h1>
+            <p id="signal-info" class="text-lg text-slate-400 mt-2">Carregando informações do sinal...</p>
         </header>
 
-        <div class="bg-gray-800 rounded-lg shadow-lg p-6">
-            <h2 class="text-2xl font-semibold text-gray-200 mb-4">Espectrograma</h2>
-            <div id="spectrogram-chart" class="w-full h-[60vh] bg-gray-900 rounded">
-                <div class="flex items-center justify-center h-full">
-                    <p class="text-2xl text-gray-500">Carregando dados de análise...</p>
+        <div class="card mb-6">
+             <h2 class="text-2xl font-semibold text-slate-200 mb-4">Áudio da Captura</h2>
+             <div id="audio-player-container" class="hidden">
+                <audio id="audio-player" class="w-full" controls></audio>
+                <a id="download-link" href="#" download class="text-indigo-400 hover:underline mt-2 inline-block">Baixar arquivo .wav</a>
+             </div>
+             <p id="audio-placeholder" class="text-slate-500">Carregando áudio...</p>
+        </div>
+
+        <div class="card">
+            <h2 class="text-2xl font-semibold text-slate-200 mb-4">Espectrograma</h2>
+            <div id="spectrogram-chart" class="w-full h-[65vh] bg-slate-900 rounded-md">
+                <div id="spectrogram-placeholder" class="flex items-center justify-center h-full text-slate-500">
+                    <p class="text-xl">Carregando dados de análise...</p>
                 </div>
             </div>
         </div>
 
         <footer class="text-center mt-8">
-            <a href="/" class="px-6 py-2 font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700">Voltar ao Dashboard</a>
-            <p class="mt-4 text-gray-500">Desenvolvido por Lucas Cardoso Gomes.</p>
+            <a href="/" class="btn btn-primary">Voltar ao Dashboard</a>
+            <p class="mt-4 text-slate-500">Desenvolvido por Lucas Cardoso Gomes.</p>
         </footer>
     </div>
 
@@ -36,53 +49,68 @@
         document.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
             const signalId = urlParams.get('id');
+            
             const signalInfoEl = document.getElementById('signal-info');
+            const specPlaceholder = document.getElementById('spectrogram-placeholder');
+            const audioContainer = document.getElementById('audio-player-container');
+            const audioPlayer = document.getElementById('audio-player');
+            const audioPlaceholder = document.getElementById('audio-placeholder');
+            const downloadLink = document.getElementById('download-link');
 
-            if (signalId) {
-                fetch(`/api/signal/info/${signalId}`)
-                    .then(response => response.json())
-                    .then(info => {
-                        signalInfoEl.textContent = `Alvo: ${info.target} | Frequência: ${(info.frequency / 1e6).toFixed(3)} MHz | Capturado em: ${info.timestamp.replace('_', ' ')}`;
-                    });
-
-                fetch(`/api/signal/analyze/${signalId}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data && data.spectrogram_db) {
-                            drawSpectrogram(data);
-                        } else {
-                            document.getElementById('spectrogram-chart').innerHTML = '<p class="text-2xl text-red-500">Falha ao carregar dados de análise.</p>';
-                        }
-                    });
+            if (!signalId) {
+                signalInfoEl.textContent = 'Erro: ID do sinal não fornecido.';
+                specPlaceholder.innerHTML = '<p class="text-2xl text-red-500">ID do sinal ausente na URL.</p>';
+                audioPlaceholder.textContent = 'ID do sinal ausente na URL.';
+                return;
             }
+
+            fetch(`/api/signal/info/${signalId}`)
+                .then(response => response.json())
+                .then(info => {
+                    const timestamp = info.timestamp.replace('_', 'T') + 'Z';
+                    const dateObject = new Date(timestamp);
+                    const localTimestamp = !isNaN(dateObject.getTime()) ? dateObject.toLocaleString('pt-BR') : "Data Inválida";
+                    
+                    signalInfoEl.textContent = `Alvo: ${info.target} | Frequência: ${(info.frequency / 1e6).toFixed(3)} MHz | Capturado em: ${localTimestamp}`;
+                    
+                    if(info.filepath) {
+                        const audioUrl = `/${info.filepath}`;
+                        audioPlayer.src = audioUrl;
+                        downloadLink.href = audioUrl;
+                        downloadLink.download = info.filepath.split(/[\\\/]/).pop();
+                        audioContainer.classList.remove('hidden');
+                        audioPlaceholder.classList.add('hidden');
+                    } else {
+                        audioPlaceholder.textContent = 'Arquivo de áudio não encontrado.';
+                    }
+                });
+
+            fetch(`/api/signal/analyze/${signalId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.spectrogram_db) {
+                        specPlaceholder.style.display = 'none';
+                        drawSpectrogram(data);
+                    } else { throw new Error('Dados de análise inválidos.'); }
+                })
+                .catch(err => {
+                     specPlaceholder.innerHTML = `<p class="text-2xl text-red-400">Falha ao carregar dados de análise.</p>`;
+                });
         });
 
         function drawSpectrogram(data) {
-            const chartDiv = document.getElementById('spectrogram-chart');
-
-            const plotData = [{
-                z: data.spectrogram_db,
-                x: data.times,
-                y: data.frequencies.map(f => f / 1e6), // Frequência em MHz
-                type: 'heatmap',
-                colorscale: 'Jet', // Escala de cores vibrante, ótima para RF
-                colorbar: {
-                    title: 'Potência (dB)'
-                }
-            }];
-
-            const layout = {
+            Plotly.newPlot('spectrogram-chart', [{
+                z: data.spectrogram_db, x: data.times, y: data.frequencies.map(f => f / 1e6),
+                type: 'heatmap', colorscale: 'Jet',
+                colorbar: { title: 'Potência (dB)', titleside: 'right' }
+            }], {
                 title: 'Análise de Frequência vs. Tempo',
-                xaxis: { title: 'Tempo (s)' },
-                yaxis: { title: 'Frequência (MHz)' },
-                paper_bgcolor: '#1f2937', // bg-gray-800
-                plot_bgcolor: '#111827',  // bg-gray-900
-                font: {
-                    color: '#d1d5db' // color-gray-300
-                }
-            };
-
-            Plotly.newPlot(chartDiv, plotData, layout, {responsive: true});
+                xaxis: { title: 'Tempo (s)', gridcolor: '#334155' },
+                yaxis: { title: 'Frequência (MHz)', gridcolor: '#334155' },
+                paper_bgcolor: '#1e293b', plot_bgcolor: '#0f172a',
+                font: { color: '#e2e8f0' },
+                margin: { l: 60, r: 50, b: 50, t: 50 }
+            }, {responsive: true});
         }
     </script>
 </body>
