@@ -38,7 +38,7 @@
     }
   ],
   "amateur_radio_monitoring": {
-    "enabled": true,
+    "enabled": false,
     "frequencies_mhz": [
       146.520, 
       146.610, 

@@ -1,8 +1,7 @@
 # utils/sdr_manager.py
 import SoapySDR
-from SoapySDR import *
 import threading
-import time
+from utils.logger import logger
 
 class SDRManager:
     _instance = None
@@ -16,85 +15,61 @@ class SDRManager:
         return cls._instance
 
     def __init__(self):
-        if self._initialized:
-            return
-        
-        self.sdr = None
-        self.active_stream = None
+        if self._initialized: return
+        self.sdr = None # O objeto do dispositivo SDR
         self.device_args = None
-        self.usage_count = 0
-        self.lock = threading.Lock()
+        self.lock = threading.Lock() # Protege a criação/destruição do objeto self.sdr
         self._initialized = True
-        print("✔️ Gerenciador de SDR inicializado.")
-        
+        logger.log("Gerenciador de SDR inicializado.", "DEBUG")
+        self.find_hackrf()
+
     def find_hackrf(self):
-        """Procura por um dispositivo HackRF e armazena seus argumentos."""
-        if self.device_args:
-            return self.device_args
-        
-        # --- LOGS DE DEPURAÇÃO ADICIONADOS ---
-        print("\n--- [DEBUG SDRManager: find_hackrf] ---")
+        if self.device_args: return self.device_args
         try:
             devices = SoapySDR.Device.enumerate()
-            if not devices:
-                print("DEBUG: SoapySDR.Device.enumerate() retornou uma lista VAZIA.")
-                return None
-
-            print(f"DEBUG: SoapySDR encontrou {len(devices)} dispositivo(s):")
-            for i, dev in enumerate(devices):
-                print(f"  - Dispositivo #{i}: {dev}")
-                # Verifica se a chave 'driver' existe antes de acessá-la
+            for dev in devices:
                 if "driver" in dev and dev["driver"] == "hackrf":
-                    print(f"    └──> ✔️ HackRF encontrado! Armazenando argumentos.")
+                    logger.log(f"Dispositivo HackRF encontrado: {dev['label']}", "SUCCESS")
                     self.device_args = dev
                     return self.device_args
-            
-            print("DEBUG: Nenhum dispositivo com 'driver=hackrf' foi encontrado na lista.")
-
+            logger.log("Nenhum dispositivo HackRF encontrado na varredura.", "WARN")
         except Exception as e:
-            print(f"DEBUG: Uma exceção ocorreu durante SoapySDR.Device.enumerate(): {e}")
-        
-        print("--- [FIM DEBUG] ---\n")
+            logger.log(f"Erro ao enumerar dispositivos SDR: {e}", "ERROR")
         return None
 
-    def acquire_device(self):
-        """Adquire um bloqueio e abre o dispositivo SDR."""
+    def acquire(self):
+        """
+        Adquire o lock e CRIA uma nova conexão limpa com o SDR.
+        """
+        logger.log("Tentando adquirir o dispositivo SDR...", "DEBUG")
         self.lock.acquire()
-        self.usage_count += 1
-        
-        if self.sdr is None:
-            try:
-                device_args = self.find_hackrf()
-                if not device_args:
-                    print("❌ SDRManager: Nenhum HackRF encontrado para aquisição.")
-                    self.release_device()
-                    return None
-                
-                print("🔌 SDRManager: Abrindo conexão com o HackRF...")
-                self.sdr = SoapySDR.Device(device_args)
-            except Exception as e:
-                print(f"❌ SDRManager: Falha ao abrir o dispositivo: {e}")
-                self.sdr = None
-                self.release_device()
-                return None
-        
-        return self.sdr
+        try:
+            if not self.device_args: self.find_hackrf()
+            if not self.device_args: raise RuntimeError("Nenhum dispositivo HackRF foi encontrado.")
+            
+            logger.log(f"Abrindo nova conexão com o dispositivo: {self.device_args['label']}", "INFO")
+            # Sempre cria uma nova instância para garantir um estado limpo
+            self.sdr = SoapySDR.Device(self.device_args)
+            
+            logger.log("Dispositivo SDR adquirido com sucesso.", "DEBUG")
+            return self.sdr
+        except Exception as e:
+            logger.log(f"Falha ao adquirir/abrir dispositivo SDR: {e}", "ERROR")
+            self.lock.release() # Libera o lock se a aquisição falhar
+            return None
 
-    def release_device(self):
-        """Libera o dispositivo se não estiver mais em uso."""
-        self.usage_count -= 1
-        if self.usage_count <= 0:
-            if self.sdr is not None:
-                print("🔌 SDRManager: Fechando conexão com o HackRF.")
-                if self.active_stream is not None:
-                    try:
-                        self.sdr.deactivateStream(self.active_stream)
-                        self.sdr.closeStream(self.active_stream)
-                    except Exception: pass
-                self.active_stream = None
-                self.sdr = None
-            self.usage_count = 0
+    def release(self, sdr_instance):
+        """
+        Fecha a conexão com o SDR e libera o lock.
+        """
+        if sdr_instance is not None:
+            logger.log("Fechando conexão com o dispositivo SDR.", "DEBUG")
+            # Definir como None aciona o destrutor da biblioteca C++, que fecha o hardware.
+            sdr_instance = None 
         
+        self.sdr = None # Garante que a próxima aquisição crie um novo objeto
+        logger.log("Dispositivo SDR liberado.", "DEBUG")
         self.lock.release()
 
+# Cria a instância única que será importada por todo o projeto
 sdr_manager = SDRManager()
