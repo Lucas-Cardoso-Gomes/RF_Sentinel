@@ -1,153 +1,44 @@
 # main.py
 import sys
 import os
-import threading
-import json
-import time
+import uvicorn
 
-os.environ['LIBUSB_DEBUG'] = '0'
+# Adiciona o diretório do projeto ao path do sistema
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
+# Configurações iniciais
+os.environ['LIBUSB_DEBUG'] = '0'
 from utils.win_dll_fix import apply as apply_win_dll_fix
 apply_win_dll_fix() 
 
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-
+# Módulos principais da aplicação
 from utils import db
 from utils.scheduler import Scheduler
-from utils.scanner import perform_capture
-from utils.sdr_manager import sdr_manager
-from utils.analyzer import analyze_wav_file
 from utils.logger import logger
 
-SHARED_STATUS = {
-    "hackrf_status": {"connected": False, "status_text": "Verificando..."},
-    "next_pass": None,
-    "scheduler_log": logger.shared_log,
-    "manual_capture_active": False
-}
-scanner_event = threading.Event(); scanner_event.set()
-db.init_db()
+# CORREÇÃO: Importa o módulo de estado compartilhado
+import app_state
 
-scheduler_thread = Scheduler(scanner_event, SHARED_STATUS)
-scheduler_thread.start()
-
-app = FastAPI(title="RFSentinel")
-app.mount("/captures", StaticFiles(directory="captures"), name="captures")
-templates = Jinja2Templates(directory="templates")
-
-# Apenas a função run_manual_capture precisa de ser alterada
-
-def run_manual_capture(target_info):
-    SHARED_STATUS["manual_capture_active"] = True
-    logger.log("Iniciando captura manual via hackrf_transfer...", "WARN")
-    
-    # Não precisamos de adquirir o dispositivo SDR com o sdr_manager
-    # A função perform_capture irá chamar o hackrf_transfer diretamente
-    perform_capture(None, target_info)
-    
-    logger.log("Captura manual finalizada.", "SUCCESS")
-    SHARED_STATUS["manual_capture_active"] = False
-
-@app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
-
-@app.get("/analysis", response_class=HTMLResponse)
-async def analysis_page(request: Request):
-    return templates.TemplateResponse("analysis.html", {"request": request})
-
-@app.post("/api/capture/manual")
-async def manual_capture_endpoint(request: Request):
-    is_scheduler_capturing = not scheduler_thread.is_idle()
-    if SHARED_STATUS["manual_capture_active"] or is_scheduler_capturing:
-        return JSONResponse(content={"error": "Outra captura (manual ou agendada) já está em andamento."}, status_code=409)
-    
-    data = await request.json()
-    
-    capture_name = data.get("name")
-    if not capture_name or capture_name.strip() == "":
-        mode = data.get("mode", "RAW")
-        freq_mhz = float(data.get("frequency_mhz", 0))
-        capture_name = f"Manual_{mode}_{freq_mhz:.3f}MHz"
-    
-    # Garante que o sample_rate nunca seja inferior a 2e6
-    sample_rate = data.get("sample_rate", 2e6)
-    if sample_rate < 2e6:
-        sample_rate = 2e6
-
-    target_info = {
-        "name": capture_name,
-        "frequency": int(float(data.get("frequency_mhz", 0)) * 1e6),
-        "capture_duration_seconds": int(data.get("duration_sec", 10)),
-        "sample_rate": sample_rate,
-        "mode": data.get("mode", "RAW"),
-        "lna_gain": data.get("lna_gain", 40),
-        "vga_gain": data.get("vga_gain", 30),
-        "amp_enabled": data.get("amp_enabled", True)
-    }
-    threading.Thread(target=run_manual_capture, args=(target_info,)).start()
-    return {"status": "Captura manual iniciada."}
-
-@app.get("/api/status")
-def get_status():
-    return { "scanner_status": "Ativo" if scanner_event.is_set() else "Pausado", "hackrf_status": SHARED_STATUS["hackrf_status"], "next_pass": SHARED_STATUS["next_pass"], "scheduler_log": SHARED_STATUS["scheduler_log"], "manual_capture_active": SHARED_STATUS["manual_capture_active"], "is_scheduler_capturing": not scheduler_thread.is_idle() }
-
-@app.get("/api/signals")
-def get_signals():
-    return db.get_latest_signals(15)
-
-@app.get("/api/signal/info/{signal_id}")
-def get_signal_info(signal_id: int):
-    conn = db.get_db_connection()
-    signal = conn.execute("SELECT * FROM signals WHERE id = ?", (signal_id,)).fetchone()
-    conn.close()
-    return dict(signal) if signal else JSONResponse(content={"error": "Sinal não encontrado"}, status_code=404)
-
-@app.get("/api/signal/analyze/{signal_id}")
-def analyze_signal(signal_id: int):
-    conn = db.get_db_connection()
-    signal = conn.execute("SELECT filepath FROM signals WHERE id = ?", (signal_id,)).fetchone()
-    conn.close()
-    # A análise só funciona em ficheiros RAW
-    if not signal or not signal['filepath'] or not os.path.exists(signal['filepath'] or '_RAW' not in signal['filepath']):
-        return JSONResponse(content={"error": "Ficheiro não encontrado ou não é do tipo RAW."}, status_code=404)
-    analysis_data = analyze_wav_file(signal['filepath'])
-    return analysis_data if analysis_data else JSONResponse(content={"error": "Falha ao processar ficheiro."}, status_code=500)
-
-@app.post("/scanner/toggle")
-def toggle_scanner():
-    if scanner_event.is_set(): scanner_event.clear(); logger.log("Scanner de satélites pausado pelo usuário.", "WARN")
-    else: scanner_event.set(); logger.log("Scanner de satélites ativado pelo usuário.", "INFO")
-    return {"status": "Ativo" if scanner_event.is_set() else "Pausado"}
-
-@app.delete("/api/signal/delete/{signal_id}")
-def delete_signal(signal_id: int):
-    logger.log(f"Recebida solicitação para apagar sinal ID: {signal_id}", "INFO")
-    paths = db.get_signal_paths_by_id(signal_id)
-    if not paths:
-        return JSONResponse(content={"error": "Sinal não encontrado no banco de dados."}, status_code=404)
-    if paths.get("filepath") and os.path.exists(paths["filepath"]):
-        try:
-            os.remove(paths["filepath"])
-            logger.log(f"Ficheiro .wav apagado: {paths['filepath']}", "SUCCESS")
-        except OSError as e:
-            logger.log(f"Erro ao apagar ficheiro .wav {paths['filepath']}: {e}", "ERROR")
-    if paths.get("image_path") and os.path.exists(paths["image_path"]):
-        try:
-            os.remove(paths["image_path"])
-            logger.log(f"Ficheiro de imagem apagado: {paths['image_path']}", "SUCCESS")
-        except OSError as e:
-            logger.log(f"Erro ao apagar ficheiro de imagem {paths['image_path']}: {e}", "ERROR")
-    if db.delete_signal_by_id(signal_id):
-        return {"status": "Sinal e ficheiros apagados com sucesso."}
-    else:
-        return JSONResponse(content={"error": "Falha ao apagar registo do banco de dados."}, status_code=500)
-
+# --- Ponto de Entrada Principal da Aplicação ---
 if __name__ == "__main__":
-    import uvicorn
+    # Inicializa o banco de dados
+    db.init_db()
+
+    # Cria a instância do agendador e a armazena no módulo de estado
+    app_state.scheduler_thread = Scheduler(app_state.scanner_event, app_state.SHARED_STATUS)
+    
+    # Inicia a thread do agendador em segundo plano
+    app_state.scheduler_thread.start()
+
+    # Importa a aplicação FastAPI do módulo web
+    from web import app
+
+    # Inicia o servidor web Uvicorn
     logger.log("Iniciando o servidor web Uvicorn...", "INFO")
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False, log_level="info")
+    uvicorn.run(
+        app, 
+        host="0.0.0.0", 
+        port=8000, 
+        reload=False, 
+        log_level="info"
+    )

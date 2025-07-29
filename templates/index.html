@@ -192,9 +192,16 @@
             },
             async toggleScanner() {
                 try {
-                    await fetch('/scanner/toggle', { method: 'POST' });
+                    const response = await fetch('/scanner/toggle', { method: 'POST' });
+                    // CORREÇÃO: Adiciona feedback de erro para o utilizador
+                    if (!response.ok) {
+                        throw new Error('Falha ao comunicar com o servidor.');
+                    }
                     RFSentinelApp.api.fetchStatus();
-                } catch (error) { console.error('Erro ao alternar scanner:', error); }
+                } catch (error) {
+                    console.error('Erro ao alternar scanner:', error);
+                    alert(`Não foi possível alterar o estado do scanner: ${error.message}`);
+                }
             },
             async startManualCapture() {
                 const { elements } = RFSentinelApp;
@@ -235,10 +242,11 @@
                         const err = await response.json();
                         throw new Error(err.error || 'Falha ao apagar o sinal.');
                     }
-                    document.querySelector(`tr[data-signal-id='${signalId}']`).style.opacity = 0;
-                    setTimeout(() => RFSentinelApp.api.fetchSignals(), 500);
+                    // A remoção visual agora é feita pela atualização da tabela
+                    RFSentinelApp.api.fetchSignals();
                 } catch (error) {
                     console.error('Erro ao apagar sinal:', error);
+                    // CORREÇÃO: Adiciona feedback de erro para o utilizador
                     alert(`Não foi possível apagar o sinal: ${error.message}`);
                 }
             }
@@ -294,7 +302,6 @@
                             imageCell = `<td class="p-3 text-center"><a href="/${signal.image_path}" target="_blank" title="Ver imagem" class="text-indigo-400 hover:text-indigo-300 inline-block"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" /></svg></a></td>`;
                         }
                         
-                        // CORREÇÃO DA LÓGICA DO BOTÃO ANALISAR
                         const isRaw = signal.filepath.toLowerCase().includes('_raw.wav');
                         const analysisContent = isRaw 
                             ? `<a href="/analysis?id=${signal.id}" target="_blank" class="text-indigo-400 hover:underline mr-4">Analisar</a>`

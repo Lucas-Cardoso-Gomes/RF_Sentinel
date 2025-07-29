@@ -8,7 +8,9 @@ import wave
 import os
 import json
 import time
-from scipy.signal import decimate  # <--- IMPORTAÇÃO CORRIGIDA AQUI
+from scipy.signal import decimate
+# A linha que causava o erro foi removida.
+# A importação agora é apenas dos módulos necessários do seu projeto.
 from utils import db, decoder
 from utils.logger import logger
 
@@ -41,7 +43,7 @@ def perform_capture(sdr, target_info):
         os.makedirs("captures", exist_ok=True)
         
         # --- Construção do Comando hackrf_transfer ---
-        command = [
+        command_list = [
             'hackrf_transfer',
             '-r', raw_filepath,
             '-f', str(frequency),
@@ -51,13 +53,15 @@ def perform_capture(sdr, target_info):
             '-n', str(int(sample_rate * duration_sec))
         ]
         if amp_enabled:
-            command.append('-a')
-            command.append('1')
+            command_list.append('-a')
+            command_list.append('1')
+        
+        command_str = ' '.join(command_list)
             
-        logger.log(f"A executar comando externo: {' '.join(command)}", "INFO")
+        logger.log(f"A executar comando externo: {command_str}", "INFO")
         
         # --- Execução do Comando ---
-        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        process = subprocess.Popen(command_str, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
         
         if process.returncode != 0:
