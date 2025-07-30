@@ -1,8 +1,8 @@
 # web.py
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
+from fastapi.templating import Jinja2Templates # Garanta que esta linha existe
 import os
 import threading
 
@@ -11,15 +11,15 @@ from utils import db
 from utils.analyzer import analyze_wav_file
 from utils.logger import logger
 from utils.scanner import perform_capture
-
-# CORREÇÃO: Importa o estado compartilhado do novo módulo app_state
 from app_state import SHARED_STATUS, scanner_event, scheduler_thread
 
 # Inicialização da aplicação FastAPI
 app = FastAPI(title="RFSentinel")
 
-# Monta o diretório de capturas para ser acessível via web
-app.mount("/captures", StaticFiles(directory="captures"), name="captures")
+# Monta o diretório de CSS e JS
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# --- CORREÇÃO: A linha abaixo estava em falta ---
 # Configura o diretório de templates para o Jinja2
 templates = Jinja2Templates(directory="templates")
 
@@ -43,8 +43,18 @@ async def read_root(request: Request):
 async def analysis_page(request: Request):
     return templates.TemplateResponse("analysis.html", {"request": request})
 
+# Endpoint para servir ficheiros grandes de forma eficiente
+@app.get("/captures/{filepath:path}")
+def serve_capture_file(filepath: str):
+    full_path = os.path.join("captures", filepath)
+    if os.path.exists(full_path):
+        return FileResponse(full_path)
+    return JSONResponse(content={"error": "Ficheiro não encontrado"}, status_code=404)
+
 
 # --- Endpoints da API (JSON) ---
+# ... (o resto do ficheiro pode permanecer como está)
+# Colei o restante para garantir que tenha o ficheiro completo e funcional
 
 @app.post("/api/capture/manual")
 async def manual_capture_endpoint(request: Request):
@@ -83,6 +93,8 @@ async def manual_capture_endpoint(request: Request):
 
 @app.get("/api/status")
 def get_status():
+    if not scheduler_thread:
+        return {"error": "Scheduler not initialized"}
     return { 
         "scanner_status": "Ativo" if scanner_event.is_set() else "Pausado", 
         "hackrf_status": SHARED_STATUS["hackrf_status"], 
@@ -91,6 +103,20 @@ def get_status():
         "manual_capture_active": SHARED_STATUS["manual_capture_active"], 
         "is_scheduler_capturing": not scheduler_thread.is_idle() 
     }
+
+@app.get("/api/passes")
+def get_upcoming_passes():
+    all_passes = []
+    if scheduler_thread and scheduler_thread.pass_predictions:
+        for sat_passes in scheduler_thread.pass_predictions.values():
+            for p in sat_passes:
+                all_passes.append({
+                    "name": p["name"],
+                    "start_utc": p["start"].utc_iso(),
+                    "end_utc": p["end"].utc_iso()
+                })
+    all_passes.sort(key=lambda x: x["start_utc"])
+    return all_passes
 
 @app.get("/api/signals")
 def get_signals():
