@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
             signalInfoEl.textContent = `Alvo: ${info.target} | Frequência: ${(info.frequency / 1e6).toFixed(3)} MHz | Capturado em: ${localTimestamp}`;
             
             if(info.filepath) {
-                const audioUrl = `/${info.filepath}`;
+                const audioUrl = `/captures/${info.filepath}`;
                 audioPlayer.src = audioUrl;
                 downloadLink.href = audioUrl;
                 downloadLink.download = info.filepath.split(/[\\\/]/).pop();
