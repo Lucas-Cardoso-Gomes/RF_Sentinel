@@ -53,7 +53,6 @@ def decode_apt(wav_filepath: str) -> str | None:
         t_sync = np.arange(sync_pulse_samples) / PROCESSING_RATE
         sync_pattern = np.sin(2 * np.pi * APT_SYNC_A_FREQ * t_sync)
         
-        # Filtro de média móvel para suavizar o sinal
         window_size = 10
         resampled_signal = np.convolve(resampled_signal, np.ones(window_size)/window_size, mode='same')
 
@@ -68,7 +67,7 @@ def decode_apt(wav_filepath: str) -> str | None:
             if len(segment) > 0:
                 peaks.append(i + np.argmax(segment))
 
-        if len(peaks) < 10: # Requer um número mínimo de linhas para uma imagem válida
+        if len(peaks) < 10:
             logger.log("❌ Erro: Sincronização falhou. Poucas linhas de imagem encontradas.", "ERROR")
             return None
         logger.log(f"    -> {len(peaks)} linhas de imagem detectadas.", "DEBUG")
@@ -76,9 +75,8 @@ def decode_apt(wav_filepath: str) -> str | None:
         # --- 4. Correção de Inclinação (Slant Correction) ---
         logger.log("    -> 4/5: Aplicando correção de inclinação para nitidez...", "INFO")
         
-        # Calcula o comprimento médio real da linha com base nos picos
         avg_line_length = np.mean(np.diff(peaks))
-        image_data_length = int(avg_line_length / 2) # A imagem ocupa metade da linha
+        image_data_length = int(avg_line_length / 2)
 
         matrix = np.zeros((len(peaks) - 1, IMAGE_WIDTH_PX), dtype=np.uint8)
 
@@ -90,9 +88,12 @@ def decode_apt(wav_filepath: str) -> str | None:
             
             line = resampled_signal[line_start:line_end]
             
-            # Converte a linha para uma imagem Pillow e redimensiona para o tamanho padrão
-            # Este passo corrige a inclinação
-            line_img = Image.fromarray(line.reshape(1, -1))
+            # ######################################################################
+            # ## CORREÇÃO: Escala a linha de [0.0, 1.0] para a faixa de 8-bits [0, 255] ##
+            # ######################################################################
+            line_scaled = (line * 255).astype(np.uint8)
+            
+            line_img = Image.fromarray(line_scaled.reshape(1, -1))
             corrected_line = line_img.resize((IMAGE_WIDTH_PX, 1), Image.Resampling.LANCZOS)
             
             matrix[i, :] = np.array(corrected_line)
@@ -102,7 +103,6 @@ def decode_apt(wav_filepath: str) -> str | None:
         
         img_final = Image.fromarray(matrix)
         
-        # Aplica a equalização de histograma para melhorar o contraste
         img_final = ImageOps.equalize(img_final)
 
         # --- Salvamento do Ficheiro ---

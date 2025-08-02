@@ -9,8 +9,6 @@ import os
 import json
 import time
 from scipy.signal import decimate
-# A linha que causava o erro foi removida.
-# A importação agora é apenas dos módulos necessários do seu projeto.
 from utils import db, decoder
 from utils.logger import logger
 
@@ -50,7 +48,7 @@ def perform_capture(sdr, target_info):
             '-s', str(sample_rate),
             '-l', str(lna_gain),
             '-g', str(vga_gain),
-            '-n', str(int(sample_rate * duration_sec))
+            '-n', str(int(sample_rate * duration_sec * 2)) # Multiplica por 2 para I e Q
         ]
         if amp_enabled:
             command_list.append('-a')
@@ -70,37 +68,57 @@ def perform_capture(sdr, target_info):
             
         logger.log("Captura com hackrf_transfer concluída com sucesso.", "SUCCESS")
 
-        # --- Conversão do Ficheiro .iq para .wav ---
+        # --- Conversão do Ficheiro .iq para .wav (POR PARTES) ---
         if os.path.exists(raw_filepath):
             logger.log(f"A converter {raw_filepath} para formato .wav...", "INFO")
             
-            iq_data = np.fromfile(raw_filepath, dtype=np.int8)
-            iq_data_float = iq_data.astype(np.float32) / 128.0
-            complex_data = iq_data_float[0::2] + 1j * iq_data_float[1::2]
-            
-            os.remove(raw_filepath)
-
-            # --- Lógica de Demodulação e Gravação ---
             final_filename = f"{target_name.replace(' ', '_')}_{timestamp}_{mode}.wav"
             filepath = os.path.join("captures", final_filename)
 
-            with wave.open(filepath, 'wb') as wf:
+            # Define um tamanho de chunk (20MB)
+            chunk_size_bytes = 20 * 1024 * 1024
+
+            with open(raw_filepath, 'rb') as f_raw, wave.open(filepath, 'wb') as wf:
+                # Configura o arquivo WAV de saída
+                audio_sample_rate = 48000
                 if mode == 'RAW':
-                    wf.setnchannels(2); wf.setsampwidth(2); wf.setframerate(int(sample_rate))
-                    samples_real = (np.real(complex_data) * 32767).astype(np.int16)
-                    samples_imag = (np.imag(complex_data) * 32767).astype(np.int16)
-                    output_chunk = np.vstack((samples_real, samples_imag)).T
+                    wf.setnchannels(2)
+                    wf.setsampwidth(2)
+                    wf.setframerate(int(sample_rate))
                 else: # AM ou FM
-                    audio_sample_rate = 48000
-                    wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(audio_sample_rate)
-                    if mode == 'FM': x = np.diff(np.unwrap(np.angle(complex_data)))
-                    else: x = np.abs(complex_data)
-                    decimation_factor = int(sample_rate / audio_sample_rate)
-                    if decimation_factor > 1: x = decimate(x, decimation_factor)
-                    x /= np.max(np.abs(x)) if np.max(np.abs(x)) > 0 else 1
-                    output_chunk = (x * 32767).astype(np.int16)
-                
-                wf.writeframes(output_chunk.tobytes())
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(audio_sample_rate)
+
+                while True:
+                    chunk = f_raw.read(chunk_size_bytes)
+                    if not chunk:
+                        break # Fim do arquivo
+
+                    iq_data = np.frombuffer(chunk, dtype=np.int8)
+                    iq_data_float = iq_data.astype(np.float32) / 128.0
+                    complex_data = iq_data_float[0::2] + 1j * iq_data_float[1::2]
+
+                    if mode == 'RAW':
+                        samples_real = (np.real(complex_data) * 32767).astype(np.int16)
+                        samples_imag = (np.imag(complex_data) * 32767).astype(np.int16)
+                        output_chunk = np.vstack((samples_real, samples_imag)).T
+                    else: # AM ou FM
+                        if mode == 'FM':
+                            x = np.diff(np.unwrap(np.angle(complex_data)))
+                        else: # AM
+                            x = np.abs(complex_data)
+                        
+                        decimation_factor = int(sample_rate / audio_sample_rate)
+                        if decimation_factor > 1:
+                            x = decimate(x, decimation_factor)
+                        
+                        x /= np.max(np.abs(x)) if np.max(np.abs(x)) > 0 else 1
+                        output_chunk = (x * 32767).astype(np.int16)
+                    
+                    wf.writeframes(output_chunk.tobytes())
+
+            os.remove(raw_filepath) # Remove o arquivo .iq bruto após a conversão
             
             logger.log(f"Sinal salvo em: {filepath}", "SUCCESS")
             image_path = None
