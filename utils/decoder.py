@@ -1,6 +1,5 @@
 # utils/decoder.py
 import numpy as np
-import wave
 from PIL import Image, ImageOps
 from scipy.signal import hilbert, resample, correlate
 import os
@@ -9,112 +8,83 @@ from utils.logger import logger
 # --- Constantes Otimizadas para APT ---
 APT_LINE_RATE_HZ = 2.0
 APT_SYNC_A_FREQ = 1040
-IMAGE_WIDTH_PX = 909  # Largura padrão para a imagem do sensor A
-PROCESSING_RATE = 11025 * 2 # Taxa de amostragem interna para processamento eficiente
+IMAGE_WIDTH_PX = 909
+PROCESSING_RATE = 11025 * 2
 
-def decode_apt(wav_filepath: str) -> str | None:
-    """
-    Decodifica um ficheiro WAV de satélite NOAA com alta qualidade, aplicando:
-    1. Processamento em Chunks para economizar memória.
-    2. Sincronização robusta com correlação cruzada.
-    3. Correção de Inclinação (Slant Correction) para nitidez.
-    4. Equalização de Histograma para melhoria de contraste.
-    """
-    logger.log(f"🛰️  Iniciando decodificação APT avançada para: {wav_filepath}", "INFO")
-    try:
-        # --- 1. Leitura e Pré-processamento em Chunks ---
-        resampled_chunks = []
-        with wave.open(wav_filepath, 'rb') as wf:
-            samplerate = wf.getframerate()
-            num_frames = wf.getnframes()
-            chunk_size = samplerate  # Processa 1 segundo de áudio de cada vez
+class RealtimeAPTDecoder:
+    def __init__(self, wav_filepath, original_samplerate):
+        self.wav_filepath = wav_filepath
+        self.original_samplerate = original_samplerate
+        self.processing_rate = PROCESSING_RATE
+        self.line_width_samples = int(self.processing_rate / APT_LINE_RATE_HZ)
+        self.sync_pattern = self._generate_sync_pattern()
+        self.image_matrix = []
+        self._buffer = np.array([], dtype=np.float32)
+        logger.log("Decodificador em tempo real iniciado.", "DEBUG")
 
-            logger.log("    -> 1/5: Processando áudio em chunks...", "DEBUG")
-            for i in range(0, num_frames, chunk_size):
-                frames = wf.readframes(chunk_size)
-                if not frames: break
-                
-                signal_stereo = np.frombuffer(frames, dtype=np.int16).reshape(-1, 2)
-                signal = signal_stereo[:, 0].astype(np.float32)
+    def _generate_sync_pattern(self):
+        sync_pulse_samples = int(0.005 * self.processing_rate)
+        t_sync = np.arange(sync_pulse_samples) / self.processing_rate
+        return np.sin(2 * np.pi * APT_SYNC_A_FREQ * t_sync)
 
-                am_demodulated = np.abs(hilbert(signal))
+    def process_chunk(self, complex_chunk):
+        # Demodulação AM
+        am_demodulated = np.abs(complex_chunk)
 
-                num_samples_resampled = int(len(am_demodulated) * PROCESSING_RATE / samplerate)
-                resampled_chunk = resample(am_demodulated, num_samples_resampled)
-                resampled_chunks.append(resampled_chunk)
-
-        resampled_signal = np.concatenate(resampled_chunks)
-        if np.max(resampled_signal) > 0:
-            resampled_signal /= np.max(resampled_signal)
-
-        # --- 2. Geração do Padrão de Sincronização e Filtragem ---
-        logger.log("    -> 2/5: Gerando padrão de sincronização...", "DEBUG")
-        sync_pulse_samples = int(0.005 * PROCESSING_RATE) # Pulso de 5ms
-        t_sync = np.arange(sync_pulse_samples) / PROCESSING_RATE
-        sync_pattern = np.sin(2 * np.pi * APT_SYNC_A_FREQ * t_sync)
+        # Reamostragem para a taxa de processamento
+        num_samples_resampled = int(len(am_demodulated) * self.processing_rate / self.original_samplerate)
+        resampled_chunk = resample(am_demodulated, num_samples_resampled)
         
-        window_size = 10
-        resampled_signal = np.convolve(resampled_signal, np.ones(window_size)/window_size, mode='same')
+        # Normaliza o chunk
+        if np.max(resampled_chunk) > 0:
+            resampled_chunk /= np.max(resampled_chunk)
 
-        # --- 3. Sincronização por Correlação Cruzada ---
-        logger.log("    -> 3/5: Sincronizando linhas via correlação cruzada...", "INFO")
-        correlation = correlate(resampled_signal, sync_pattern, mode='valid')
+        # Adiciona ao buffer interno
+        self._buffer = np.concatenate([self._buffer, resampled_chunk])
+
+        # Processa linhas completas que estão no buffer
+        while len(self._buffer) >= self.line_width_samples:
+            line_data = self._buffer[:self.line_width_samples]
+            self._buffer = self._buffer[self.line_width_samples:]
+            
+            self._process_line(line_data)
+
+    def _process_line(self, line_data):
+        correlation = correlate(line_data, self.sync_pattern, mode='valid')
+        peak = np.argmax(correlation)
         
-        line_width = int(PROCESSING_RATE / APT_LINE_RATE_HZ)
-        peaks = []
-        for i in range(0, len(correlation), line_width):
-            segment = correlation[i : i + line_width]
-            if len(segment) > 0:
-                peaks.append(i + np.argmax(segment))
+        # A imagem ocupa a primeira metade da linha após o pulso de sync
+        image_data_length = int(self.line_width_samples / 2) 
+        line_end = peak + image_data_length
+        
+        if line_end > len(line_data):
+            return
 
-        if len(peaks) < 10:
-            logger.log("❌ Erro: Sincronização falhou. Poucas linhas de imagem encontradas.", "ERROR")
+        image_line_data = line_data[peak:line_end]
+        
+        # Converte para 8-bit e corrige a inclinação
+        line_scaled = (image_line_data * 255).astype(np.uint8)
+        line_img = Image.fromarray(line_scaled.reshape(1, -1))
+        corrected_line = line_img.resize((IMAGE_WIDTH_PX, 1), Image.Resampling.LANCZOS)
+        
+        self.image_matrix.append(np.array(corrected_line))
+
+    def finalize(self):
+        if not self.image_matrix:
+            logger.log("Nenhuma linha de imagem foi decodificada. Imagem não será salva.", "WARN")
             return None
-        logger.log(f"    -> {len(peaks)} linhas de imagem detectadas.", "DEBUG")
-
-        # --- 4. Correção de Inclinação (Slant Correction) ---
-        logger.log("    -> 4/5: Aplicando correção de inclinação para nitidez...", "INFO")
         
-        avg_line_length = np.mean(np.diff(peaks))
-        image_data_length = int(avg_line_length / 2)
-
-        matrix = np.zeros((len(peaks) - 1, IMAGE_WIDTH_PX), dtype=np.uint8)
-
-        for i in range(len(peaks) - 1):
-            line_start = peaks[i]
-            line_end = line_start + image_data_length
-            
-            if line_end > len(resampled_signal): break
-            
-            line = resampled_signal[line_start:line_end]
-            
-            # ######################################################################
-            # ## CORREÇÃO: Escala a linha de [0.0, 1.0] para a faixa de 8-bits [0, 255] ##
-            # ######################################################################
-            line_scaled = (line * 255).astype(np.uint8)
-            
-            line_img = Image.fromarray(line_scaled.reshape(1, -1))
-            corrected_line = line_img.resize((IMAGE_WIDTH_PX, 1), Image.Resampling.LANCZOS)
-            
-            matrix[i, :] = np.array(corrected_line)
+        logger.log(f"Finalizando imagem com {len(self.image_matrix)} linhas.", "INFO")
+        final_matrix = np.vstack(self.image_matrix)
         
-        # --- 5. Finalização e Melhoria de Contraste ---
-        logger.log("    -> 5/5: Melhorando contraste e salvando imagem final...", "INFO")
-        
-        img_final = Image.fromarray(matrix)
-        
+        img_final = Image.fromarray(final_matrix)
         img_final = ImageOps.equalize(img_final)
 
-        # --- Salvamento do Ficheiro ---
         output_dir = os.path.join("captures", "images")
         os.makedirs(output_dir, exist_ok=True)
-        base_filename = os.path.splitext(os.path.basename(wav_filepath))[0]
+        base_filename = os.path.splitext(os.path.basename(self.wav_filepath))[0]
         output_filepath = os.path.join(output_dir, f"{base_filename}.png")
         
         img_final.save(output_filepath)
         logger.log(f"✅ Imagem APT aprimorada salva em: {output_filepath}", "SUCCESS")
         return output_filepath
-
-    except Exception as e:
-        logger.log(f"❌ Falha na decodificação APT avançada: {e}", "ERROR")
-        return None

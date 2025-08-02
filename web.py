@@ -2,7 +2,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates # Garanta que esta linha existe
+from fastapi.templating import Jinja2Templates
 import os
 import threading
 
@@ -16,21 +16,23 @@ from app_state import SHARED_STATUS, scanner_event, scheduler_thread
 # Inicialização da aplicação FastAPI
 app = FastAPI(title="RFSentinel")
 
-# Monta o diretório de CSS e JS
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# --- CORREÇÃO: A linha abaixo estava em falta ---
-# Configura o diretório de templates para o Jinja2
 templates = Jinja2Templates(directory="templates")
 
-# --- Lógica de Negócio movida para cá para simplificar ---
+# --- CORREÇÃO: Adicionado try/finally para garantir que o estado seja sempre redefinido ---
 def run_manual_capture(target_info):
     """Função executada em uma thread para captura manual."""
     SHARED_STATUS["manual_capture_active"] = True
-    logger.log("Iniciando captura manual via hackrf_transfer...", "WARN")
-    perform_capture(None, target_info)
-    logger.log("Captura manual finalizada.", "SUCCESS")
-    SHARED_STATUS["manual_capture_active"] = False
+    logger.log("Iniciando captura manual por streaming...", "WARN")
+    try:
+        # Chama a função de captura por streaming
+        perform_capture(None, target_info)
+    except Exception as e:
+        logger.log(f"Erro não esperado na thread de captura manual: {e}", "ERROR")
+    finally:
+        # Este bloco é EXECUTADO SEMPRE, garantindo que o estado seja redefinido
+        logger.log("Captura manual finalizada.", "SUCCESS")
+        SHARED_STATUS["manual_capture_active"] = False
 
 
 # --- Endpoints da Interface Web (HTML) ---
@@ -43,7 +45,6 @@ async def read_root(request: Request):
 async def analysis_page(request: Request):
     return templates.TemplateResponse("analysis.html", {"request": request})
 
-# Endpoint para servir ficheiros grandes de forma eficiente
 @app.get("/captures/{filepath:path}")
 def serve_capture_file(filepath: str):
     full_path = os.path.join("captures", filepath)
@@ -53,8 +54,6 @@ def serve_capture_file(filepath: str):
 
 
 # --- Endpoints da API (JSON) ---
-# ... (o resto do ficheiro pode permanecer como está)
-# Colei o restante para garantir que tenha o ficheiro completo e funcional
 
 @app.post("/api/capture/manual")
 async def manual_capture_endpoint(request: Request):

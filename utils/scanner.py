@@ -1,137 +1,132 @@
 # utils/scanner.py
 import subprocess
-import SoapySDR
-from SoapySDR import *
 import numpy as np
 import datetime
 import wave
 import os
-import json
 import time
-from scipy.signal import decimate
-from utils import db, decoder
+
+from utils import db
+from utils.decoder import RealtimeAPTDecoder
 from utils.logger import logger
 
-def perform_capture(sdr, target_info):
+def perform_capture(sdr_unused, target_info):
     """
-    Executa a captura de sinal utilizando a ferramenta de linha de comandos hackrf_transfer
-    para máxima estabilidade e para contornar problemas de driver com SoapySDR.
+    Executa a captura de sinal usando hackrf_transfer com streaming para o Python,
+    combinando estabilidade e eficiência de memória.
     """
-    filepath = ""
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    
+    filepath = ""
+    process = None
+
     try:
         # --- Parâmetros ---
         mode = target_info.get('mode', 'RAW')
         sample_rate = int(target_info.get('sample_rate', 2e6))
         frequency = int(target_info.get('frequency', 100e6))
+        duration_sec = target_info['capture_duration_seconds']
+        target_name = target_info.get('name', 'capture')
         lna_gain = target_info.get("lna_gain", 40)
         vga_gain = target_info.get("vga_gain", 30)
         amp_enabled = target_info.get("amp_enabled", True)
-        duration_sec = target_info['capture_duration_seconds']
-        
-        if sdr:
-            logger.log("Dispositivo SDR libertado para permitir o uso pelo hackrf_transfer.", "DEBUG")
 
-        # --- Geração do Nome do Ficheiro ---
-        target_name = target_info.get('name', 'capture')
-        
-        raw_filename = f"{target_name.replace(' ', '_')}_{timestamp}.iq"
-        raw_filepath = os.path.join("captures", raw_filename)
+        # --- Prepara o arquivo WAV de saída ---
+        final_filename = f"{target_name.replace(' ', '_')}_{timestamp}_{mode}.wav"
+        filepath = os.path.join("captures", final_filename)
         os.makedirs("captures", exist_ok=True)
         
-        # --- Construção do Comando hackrf_transfer ---
+        wf = wave.open(filepath, 'wb')
+        audio_sample_rate = 48000
+        if mode == 'RAW':
+            wf.setnchannels(2); wf.setsampwidth(2); wf.setframerate(int(sample_rate))
+        else: # AM ou FM
+            wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(audio_sample_rate)
+
+        # --- Prepara o decodificador em tempo real se for NOAA ---
+        decoder = None
+        if "NOAA" in target_name and mode == 'RAW':
+            decoder = RealtimeAPTDecoder(filepath, sample_rate)
+
+        # --- Constrói o Comando e Inicia o Subprocesso ---
         command_list = [
             'hackrf_transfer',
-            '-r', raw_filepath,
+            '-r', '-',  # Envia dados brutos para a saída padrão (stdout)
             '-f', str(frequency),
             '-s', str(sample_rate),
             '-l', str(lna_gain),
             '-g', str(vga_gain),
-            '-n', str(int(sample_rate * duration_sec * 2)) # Multiplica por 2 para I e Q
         ]
         if amp_enabled:
-            command_list.append('-a')
-            command_list.append('1')
+            command_list.extend(['-a', '1'])
         
         command_str = ' '.join(command_list)
-            
-        logger.log(f"A executar comando externo: {command_str}", "INFO")
+        logger.log(f"Iniciando captura via pipe: {command_str}", "INFO")
+
+        process = subprocess.Popen(command_str, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         
-        # --- Execução do Comando ---
-        process = subprocess.Popen(command_str, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = process.communicate()
+        start_time = time.time()
+        total_bytes_processed = 0
+        chunk_size_bytes = 1024 * 512 # Processa em chunks de 512KB
+
+        while True:
+            # Verifica se a duração da captura foi atingida
+            if time.time() - start_time > duration_sec:
+                logger.log(f"Tempo de captura de {duration_sec}s atingido. Finalizando...", "INFO")
+                break
+
+            chunk = process.stdout.read(chunk_size_bytes)
+            if not chunk:
+                break
+            
+            total_bytes_processed += len(chunk)
+            
+            # --- Processamento do Chunk ---
+            iq_data = np.frombuffer(chunk, dtype=np.int8)
+            iq_data_float = iq_data.astype(np.float32) / 128.0
+            complex_data = iq_data_float[0::2] + 1j * iq_data_float[1::2]
+            
+            # Processa e escreve o áudio
+            if mode == 'RAW':
+                samples_real = (np.real(complex_data) * 32767).astype(np.int16)
+                samples_imag = (np.imag(complex_data) * 32767).astype(np.int16)
+                output_chunk = np.vstack((samples_real, samples_imag)).T
+            else: # AM ou FM
+                # Implementação simplificada para streaming, pode ser aprimorada
+                x = np.abs(complex_data)
+                x /= np.max(np.abs(x)) if np.max(np.abs(x)) > 0 else 1
+                output_chunk = (x * 32767).astype(np.int16)
+
+            wf.writeframes(output_chunk.tobytes())
+
+            # Se for um NOAA, processa o chunk para a imagem
+            if decoder:
+                decoder.process_chunk(complex_data)
+
+        logger.log(f"Captura finalizada. Total de bytes processados: {total_bytes_processed / (1024*1024):.2f} MB", "SUCCESS")
         
-        if process.returncode != 0:
-            logger.log(f"Erro ao executar hackrf_transfer: {stderr.decode('utf-8', errors='ignore')}", "ERROR")
-            return
-            
-        logger.log("Captura com hackrf_transfer concluída com sucesso.", "SUCCESS")
-
-        # --- Conversão do Ficheiro .iq para .wav (POR PARTES) ---
-        if os.path.exists(raw_filepath):
-            logger.log(f"A converter {raw_filepath} para formato .wav...", "INFO")
-            
-            final_filename = f"{target_name.replace(' ', '_')}_{timestamp}_{mode}.wav"
-            filepath = os.path.join("captures", final_filename)
-
-            # Define um tamanho de chunk (20MB)
-            chunk_size_bytes = 20 * 1024 * 1024
-
-            with open(raw_filepath, 'rb') as f_raw, wave.open(filepath, 'wb') as wf:
-                # Configura o arquivo WAV de saída
-                audio_sample_rate = 48000
-                if mode == 'RAW':
-                    wf.setnchannels(2)
-                    wf.setsampwidth(2)
-                    wf.setframerate(int(sample_rate))
-                else: # AM ou FM
-                    wf.setnchannels(1)
-                    wf.setsampwidth(2)
-                    wf.setframerate(audio_sample_rate)
-
-                while True:
-                    chunk = f_raw.read(chunk_size_bytes)
-                    if not chunk:
-                        break # Fim do arquivo
-
-                    iq_data = np.frombuffer(chunk, dtype=np.int8)
-                    iq_data_float = iq_data.astype(np.float32) / 128.0
-                    complex_data = iq_data_float[0::2] + 1j * iq_data_float[1::2]
-
-                    if mode == 'RAW':
-                        samples_real = (np.real(complex_data) * 32767).astype(np.int16)
-                        samples_imag = (np.imag(complex_data) * 32767).astype(np.int16)
-                        output_chunk = np.vstack((samples_real, samples_imag)).T
-                    else: # AM ou FM
-                        if mode == 'FM':
-                            x = np.diff(np.unwrap(np.angle(complex_data)))
-                        else: # AM
-                            x = np.abs(complex_data)
-                        
-                        decimation_factor = int(sample_rate / audio_sample_rate)
-                        if decimation_factor > 1:
-                            x = decimate(x, decimation_factor)
-                        
-                        x /= np.max(np.abs(x)) if np.max(np.abs(x)) > 0 else 1
-                        output_chunk = (x * 32767).astype(np.int16)
-                    
-                    wf.writeframes(output_chunk.tobytes())
-
-            os.remove(raw_filepath) # Remove o arquivo .iq bruto após a conversão
-            
-            logger.log(f"Sinal salvo em: {filepath}", "SUCCESS")
-            image_path = None
-            if "NOAA" in target_name and mode == 'RAW':
-                image_path = decoder.decode_apt(filepath)
-            
-            db.insert_signal(
-                target=target_name,
-                frequency=frequency, 
-                timestamp=timestamp, 
-                filepath=filepath,
-                image_path=image_path
-            )
+        # --- Finaliza tudo ---
+        wf.close()
+        image_path = None
+        if decoder:
+            image_path = decoder.finalize()
+        
+        db.insert_signal(
+            target=target_name, frequency=frequency, timestamp=timestamp, 
+            filepath=filepath, image_path=image_path
+        )
 
     except Exception as e:
-        logger.log(f"Erro CRÍTICO durante a captura externa: {e}", "ERROR")
+        logger.log(f"Erro CRÍTICO durante a captura: {e}", "ERROR")
+
+    finally:
+        if process:
+            # Garante que o processo hackrf_transfer seja encerrado
+            if process.poll() is None:
+                logger.log("Encerrando processo hackrf_transfer...", "DEBUG")
+                process.terminate()
+                process.wait()
+            
+            # Exibe erros do hackrf_transfer, se houver
+            stderr_output = process.stderr.read().decode('utf-8', errors='ignore')
+            if stderr_output:
+                logger.log(f"Saída de erro do hackrf_transfer: {stderr_output}", "WARN")

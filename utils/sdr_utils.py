@@ -14,16 +14,20 @@ def setup_sdr_for_capture(sdr, frequency, sample_rate, gain_settings):
         # Desativa o ganho automático para ter controle manual
         sdr.setGainMode(SOAPY_SDR_RX, 0, False)
 
-        # Lógica de ganho simplificada e robusta
-        if "gain" in gain_settings:
-            total_gain = gain_settings["gain"]
-            sdr.setGain(SOAPY_SDR_RX, 0, total_gain)
-            logger.log(f"Ganho geral configurado para: {total_gain} dB", "DEBUG")
+        # Configura os ganhos individuais do HackRF
+        if gain_settings.get("amp_enabled", False):
+            sdr.setGain(SOAPY_SDR_RX, 0, "AMP", 1)
+            logger.log("Amplificador (AMP) ativado.", "DEBUG")
         else:
-            # Fallback para o amplificador se a configuração antiga for usada
-            if gain_settings.get("amp", 0) == 1:
-                sdr.setGain(SOAPY_SDR_RX, 0, "AMP", 1)
-                logger.log("Amplificador (AMP) ativado.", "DEBUG")
+            sdr.setGain(SOAPY_SDR_RX, 0, "AMP", 0)
+
+        if "lna_gain" in gain_settings:
+            sdr.setGain(SOAPY_SDR_RX, 0, "LNA", gain_settings["lna_gain"])
+            logger.log(f"Ganho LNA (IF) configurado para: {gain_settings['lna_gain']} dB", "DEBUG")
+
+        if "vga_gain" in gain_settings:
+            sdr.setGain(SOAPY_SDR_RX, 0, "VGA", gain_settings["vga_gain"])
+            logger.log(f"Ganho VGA (Baseband) configurado para: {gain_settings['vga_gain']} dB", "DEBUG")
 
         return True
     except Exception as e:
