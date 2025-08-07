@@ -20,6 +20,8 @@ class RealtimeAPTDecoder:
         self.sync_pattern = self._generate_sync_pattern()
         self.image_matrix = []
         self._buffer = np.array([], dtype=np.float32)
+        # CORREÇÃO: Adiciona um limiar para a detecção de picos de sincronização
+        self.correlation_threshold = 5 
         logger.log("Decodificador em tempo real iniciado.", "DEBUG")
 
     def _generate_sync_pattern(self):
@@ -28,21 +30,16 @@ class RealtimeAPTDecoder:
         return np.sin(2 * np.pi * APT_SYNC_A_FREQ * t_sync)
 
     def process_chunk(self, complex_chunk):
-        # Demodulação AM
         am_demodulated = np.abs(complex_chunk)
 
-        # Reamostragem para a taxa de processamento
         num_samples_resampled = int(len(am_demodulated) * self.processing_rate / self.original_samplerate)
         resampled_chunk = resample(am_demodulated, num_samples_resampled)
         
-        # Normaliza o chunk
         if np.max(resampled_chunk) > 0:
             resampled_chunk /= np.max(resampled_chunk)
 
-        # Adiciona ao buffer interno
         self._buffer = np.concatenate([self._buffer, resampled_chunk])
 
-        # Processa linhas completas que estão no buffer
         while len(self._buffer) >= self.line_width_samples:
             line_data = self._buffer[:self.line_width_samples]
             self._buffer = self._buffer[self.line_width_samples:]
@@ -50,10 +47,19 @@ class RealtimeAPTDecoder:
             self._process_line(line_data)
 
     def _process_line(self, line_data):
-        correlation = correlate(line_data, self.sync_pattern, mode='valid')
-        peak = np.argmax(correlation)
+        # CORREÇÃO: Aplica um filtro de média móvel para suavizar o sinal antes da correlação
+        window_size = 10
+        line_data_smooth = np.convolve(line_data, np.ones(window_size)/window_size, mode='same')
+
+        correlation = correlate(line_data_smooth, self.sync_pattern, mode='valid')
         
-        # A imagem ocupa a primeira metade da linha após o pulso de sync
+        peak = np.argmax(correlation)
+        peak_value = correlation[peak]
+
+        # CORREÇÃO: Verifica se o pico encontrado é forte o suficiente (acima do ruído)
+        if peak_value < self.correlation_threshold:
+            return # Ignora a linha se a sincronização for fraca
+
         image_data_length = int(self.line_width_samples / 2) 
         line_end = peak + image_data_length
         
@@ -62,7 +68,6 @@ class RealtimeAPTDecoder:
 
         image_line_data = line_data[peak:line_end]
         
-        # Converte para 8-bit e corrige a inclinação
         line_scaled = (image_line_data * 255).astype(np.uint8)
         line_img = Image.fromarray(line_scaled.reshape(1, -1))
         corrected_line = line_img.resize((IMAGE_WIDTH_PX, 1), Image.Resampling.LANCZOS)
