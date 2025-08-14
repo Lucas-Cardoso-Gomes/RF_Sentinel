@@ -20,7 +20,6 @@ class RealtimeAPTDecoder:
         self.sync_pattern = self._generate_sync_pattern()
         self.image_matrix = []
         self._buffer = np.array([], dtype=np.float32)
-        # CORREÇÃO: Adiciona um limiar para a detecção de picos de sincronização
         self.correlation_threshold = 5 
         logger.log("Decodificador em tempo real iniciado.", "DEBUG")
 
@@ -47,7 +46,6 @@ class RealtimeAPTDecoder:
             self._process_line(line_data)
 
     def _process_line(self, line_data):
-        # CORREÇÃO: Aplica um filtro de média móvel para suavizar o sinal antes da correlação
         window_size = 10
         line_data_smooth = np.convolve(line_data, np.ones(window_size)/window_size, mode='same')
 
@@ -56,9 +54,8 @@ class RealtimeAPTDecoder:
         peak = np.argmax(correlation)
         peak_value = correlation[peak]
 
-        # CORREÇÃO: Verifica se o pico encontrado é forte o suficiente (acima do ruído)
         if peak_value < self.correlation_threshold:
-            return # Ignora a linha se a sincronização for fraca
+            return
 
         image_data_length = int(self.line_width_samples / 2) 
         line_end = peak + image_data_length

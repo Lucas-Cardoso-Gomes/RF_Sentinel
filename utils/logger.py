@@ -1,4 +1,3 @@
-# utils/logger.py
 import datetime
 import threading
 
@@ -27,5 +26,4 @@ class Logger:
         log_entry = { "timestamp": timestamp, "level": level, "message": message }
         self._add_to_shared_log(log_entry)
 
-# Cria a instância única que será importada por todo o projeto
 logger = Logger()

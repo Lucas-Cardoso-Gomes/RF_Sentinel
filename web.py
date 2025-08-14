@@ -1,4 +1,3 @@
-# web.py
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -6,36 +5,28 @@ from fastapi.templating import Jinja2Templates
 import os
 import threading
 
-# Importa as funções e variáveis necessárias de outros módulos
 from utils import db
 from utils.analyzer import analyze_wav_file
 from utils.logger import logger
 from utils.scanner import perform_capture
 from app_state import SHARED_STATUS, scanner_event, scheduler_thread
 
-# Inicialização da aplicação FastAPI
 app = FastAPI(title="RFSentinel")
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# --- CORREÇÃO: Adicionado try/finally para garantir que o estado seja sempre redefinido ---
 def run_manual_capture(target_info):
     """Função executada em uma thread para captura manual."""
     SHARED_STATUS["manual_capture_active"] = True
     logger.log("Iniciando captura manual por streaming...", "WARN")
     try:
-        # Chama a função de captura por streaming
         perform_capture(None, target_info)
     except Exception as e:
         logger.log(f"Erro não esperado na thread de captura manual: {e}", "ERROR")
     finally:
-        # Este bloco é EXECUTADO SEMPRE, garantindo que o estado seja redefinido
         logger.log("Captura manual finalizada.", "SUCCESS")
         SHARED_STATUS["manual_capture_active"] = False
-
-
-# --- Endpoints da Interface Web (HTML) ---
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
@@ -51,9 +42,6 @@ def serve_capture_file(filepath: str):
     if os.path.exists(full_path):
         return FileResponse(full_path)
     return JSONResponse(content={"error": "Ficheiro não encontrado"}, status_code=404)
-
-
-# --- Endpoints da API (JSON) ---
 
 @app.post("/api/capture/manual")
 async def manual_capture_endpoint(request: Request):

@@ -1,4 +1,3 @@
-// static/js/dashboard.js
 const RFSentinelApp = {
     elements: {},
     state: {},
@@ -157,7 +156,6 @@ const RFSentinelApp = {
                 const pass = data.next_pass;
                 elements.nextTarget.textContent = pass.name;
                 const startTime = new Date(pass.start_utc);
-                // CORREÇÃO: Removido o timeZone para usar o fuso horário local do navegador
                 elements.nextTime.textContent = startTime.toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                 this.updateCountdown(startTime);
             } else {
@@ -186,7 +184,6 @@ const RFSentinelApp = {
                 newContent = signals.map(signal => {
                     const freqMhz = (signal.frequency / 1e6).toFixed(3);
                     const utcDate = new Date(signal.timestamp.replace('_', 'T') + 'Z');
-                    // CORREÇÃO: Removido o timeZone para usar o fuso horário local do navegador
                     const localTimestamp = utcDate.toLocaleString('pt-BR');
                     const fileName = signal.filepath.split(/[\\\/]/).pop();
                     let imageCell = '<td class="p-3 text-center text-slate-500">N/A</td>';
@@ -213,7 +210,6 @@ const RFSentinelApp = {
                 newContent = passes.map(pass => {
                     const startDate = new Date(pass.start_utc);
                     const endDate = new Date(pass.end_utc);
-                    // CORREÇÃO: Removido o timeZone para usar o fuso horário local do navegador
                     const options = { hour12: false, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' };
                     const startTimeLocal = startDate.toLocaleString('pt-BR', options);
                     const endTimeLocal = endDate.toLocaleString('pt-BR', options);

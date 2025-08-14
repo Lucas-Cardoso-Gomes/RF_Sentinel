@@ -34,13 +34,11 @@ def init_db():
     conn.close()
 
 def get_db_connection():
-    # (nenhuma alteração nesta função)
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
 
 def insert_signal(target, frequency, timestamp, filepath, image_path=None):
-    # (nenhuma alteração nesta função)
     try:
         conn = get_db_connection()
         conn.execute(
@@ -52,7 +50,6 @@ def insert_signal(target, frequency, timestamp, filepath, image_path=None):
     except sqlite3.Error as e:
         print(f"❌ Erro no banco de dados ao inserir sinal: {e}")
 
-# --- NOVA FUNÇÃO ---
 def get_signal_paths_by_id(signal_id: int):
     """Busca os caminhos do arquivo .wav e da imagem de um sinal pelo seu ID."""
     try:
@@ -64,7 +61,6 @@ def get_signal_paths_by_id(signal_id: int):
         print(f"❌ Erro no banco de dados ao buscar caminhos do sinal: {e}")
         return None
 
-# --- NOVA FUNÇÃO ---
 def delete_signal_by_id(signal_id: int):
     """Remove um sinal do banco de dados pelo seu ID."""
     try:
@@ -78,7 +74,6 @@ def delete_signal_by_id(signal_id: int):
         return False
 
 def get_latest_signals(limit=15):
-    # (aumentado o limite padrão)
     try:
         conn = get_db_connection()
         signals = conn.execute(
@@ -89,5 +84,3 @@ def get_latest_signals(limit=15):
     except sqlite3.Error as e:
         print(f"❌ Erro no banco de dados ao buscar sinais: {e}")
         return []
-
-# Removida a função delete_signal_by_filepath pois a deleção por ID é mais segura.

@@ -1,4 +1,3 @@
-# utils/sdr_utils.py
 from SoapySDR import *
 from utils.logger import logger
 
@@ -11,10 +10,8 @@ def setup_sdr_for_capture(sdr, frequency, sample_rate, gain_settings):
         sdr.setSampleRate(SOAPY_SDR_RX, 0, sample_rate)
         sdr.setFrequency(SOAPY_SDR_RX, 0, frequency)
 
-        # Desativa o ganho automático para ter controle manual
         sdr.setGainMode(SOAPY_SDR_RX, 0, False)
 
-        # Configura os ganhos individuais do HackRF
         if gain_settings.get("amp_enabled", False):
             sdr.setGain(SOAPY_SDR_RX, 0, "AMP", 1)
             logger.log("Amplificador (AMP) ativado.", "DEBUG")

@@ -1,4 +1,3 @@
-// static/js/analysis.js
 document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const signalId = urlParams.get('id');

@@ -1,4 +1,3 @@
-# utils/scheduler.py
 import time
 import datetime
 import json
@@ -115,7 +114,7 @@ class Scheduler(threading.Thread):
         logger.log("Agendador iniciado.", "INFO")
         last_tle_update_time = 0
         last_cleanup_time = 0
-        MIN_TLE_UPDATE_INTERVAL_SECONDS = 2 * 3600  # 2 horas
+        MIN_TLE_UPDATE_INTERVAL_SECONDS = 2 * 3600
         CHECK_INTERVAL_SECONDS = 15
         IDLE_INTERVAL_SECONDS = 300
 
@@ -134,10 +133,7 @@ class Scheduler(threading.Thread):
                 if (now - last_cleanup_time) > 6 * 3600:
                     cleanup_old_captures()
                     last_cleanup_time = now
-                
-                # ##############################################################
-                # ## LÓGICA DE ATUALIZAÇÃO DE TLE REESTRUTURADA E CORRIGIDA    ##
-                # ##############################################################
+
                 recalculate_passes_needed = False
                 time_since_last_update = now - last_tle_update_time
 
@@ -150,7 +146,6 @@ class Scheduler(threading.Thread):
                     for url, group_name in unique_urls.items():
                         cache_path = os.path.join(TLE_CACHE_DIR, f"{group_name}.txt")
                         
-                        # Sempre tenta baixar primeiro
                         logger.log(f"Tentando baixar TLEs de {url}...", "INFO")
                         tle_data = tle.fetch_tle_from_url(url)
                         
@@ -178,7 +173,6 @@ class Scheduler(threading.Thread):
                     recalculate_passes_needed = True
                     last_tle_update_time = now
 
-                # Recalcula as passagens se necessário (após download ou na primeira vez)
                 if recalculate_passes_needed or not self.pass_predictions:
                     logger.log("Recalculando todas as previsões de passagem...", "INFO")
                     self.pass_predictions.clear()

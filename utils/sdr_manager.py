@@ -1,4 +1,3 @@
-# utils/sdr_manager.py
 import SoapySDR
 import threading
 from utils.logger import logger
@@ -16,9 +15,9 @@ class SDRManager:
 
     def __init__(self):
         if self._initialized: return
-        self.sdr = None # O objeto do dispositivo SDR
+        self.sdr = None
         self.device_args = None
-        self.lock = threading.Lock() # Protege a criação/destruição do objeto self.sdr
+        self.lock = threading.Lock()
         self._initialized = True
         logger.log("Gerenciador de SDR inicializado.", "DEBUG")
         self.find_hackrf()
@@ -48,14 +47,13 @@ class SDRManager:
             if not self.device_args: raise RuntimeError("Nenhum dispositivo HackRF foi encontrado.")
             
             logger.log(f"Abrindo nova conexão com o dispositivo: {self.device_args['label']}", "INFO")
-            # Sempre cria uma nova instância para garantir um estado limpo
             self.sdr = SoapySDR.Device(self.device_args)
             
             logger.log("Dispositivo SDR adquirido com sucesso.", "DEBUG")
             return self.sdr
         except Exception as e:
             logger.log(f"Falha ao adquirir/abrir dispositivo SDR: {e}", "ERROR")
-            self.lock.release() # Libera o lock se a aquisição falhar
+            self.lock.release()
             return None
 
     def release(self, sdr_instance):
@@ -64,12 +62,10 @@ class SDRManager:
         """
         if sdr_instance is not None:
             logger.log("Fechando conexão com o dispositivo SDR.", "DEBUG")
-            # Definir como None aciona o destrutor da biblioteca C++, que fecha o hardware.
             sdr_instance = None 
         
-        self.sdr = None # Garante que a próxima aquisição crie um novo objeto
+        self.sdr = None
         logger.log("Dispositivo SDR liberado.", "DEBUG")
         self.lock.release()
 
-# Cria a instância única que será importada por todo o projeto
 sdr_manager = SDRManager()
