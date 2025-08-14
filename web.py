@@ -9,7 +9,7 @@ from utils import db
 from utils.analyzer import analyze_wav_file
 from utils.logger import logger
 from utils.scanner import perform_capture
-from app_state import SHARED_STATUS, scanner_event, scheduler_thread
+from app_state import SHARED_STATUS, scanner_event, scheduler_thread, capture_lock
 
 app = FastAPI(title="RFSentinel")
 
@@ -27,6 +27,7 @@ def run_manual_capture(target_info):
     finally:
         logger.log("Captura manual finalizada.", "SUCCESS")
         SHARED_STATUS["manual_capture_active"] = False
+        capture_lock.release() # Garante que o lock é libertado no final
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
@@ -45,38 +46,49 @@ def serve_capture_file(filepath: str):
 
 @app.post("/api/capture/manual")
 async def manual_capture_endpoint(request: Request):
-    is_scheduler_capturing = not scheduler_thread.is_idle()
-    if SHARED_STATUS["manual_capture_active"] or is_scheduler_capturing:
+    # Tenta adquirir o lock de forma não-bloqueante.
+    # Se já estiver bloqueado, significa que outra captura está ativa.
+    if not capture_lock.acquire(blocking=False):
         return JSONResponse(
-            content={"error": "Outra captura (manual ou agendada) já está em andamento."}, 
-            status_code=409
+            content={"error": "Outra captura já está em andamento."}, 
+            status_code=409 # Código de Conflito
         )
-    
-    data = await request.json()
-    
-    capture_name = data.get("name")
-    if not capture_name or not capture_name.strip():
-        mode = data.get("mode", "RAW")
-        freq_mhz = float(data.get("frequency_mhz", 0))
-        capture_name = f"Manual_{mode}_{freq_mhz:.3f}MHz"
-    
-    sample_rate = data.get("sample_rate", 2e6)
-    if sample_rate < 2e6:
-        sample_rate = 2e6
 
-    target_info = {
-        "name": capture_name,
-        "frequency": int(float(data.get("frequency_mhz", 0)) * 1e6),
-        "capture_duration_seconds": int(data.get("duration_sec", 10)),
-        "sample_rate": sample_rate,
-        "mode": data.get("mode", "RAW"),
-        "lna_gain": data.get("lna_gain", 40),
-        "vga_gain": data.get("vga_gain", 30),
-        "amp_enabled": data.get("amp_enabled", True)
-    }
-    
-    threading.Thread(target=run_manual_capture, args=(target_info,)).start()
-    return {"status": "Captura manual iniciada."}
+    # Se chegámos aqui, o lock foi adquirido com sucesso.
+    try:
+        data = await request.json()
+        
+        capture_name = data.get("name")
+        if not capture_name or not capture_name.strip():
+            mode = data.get("mode", "RAW")
+            freq_mhz = float(data.get("frequency_mhz", 0))
+            capture_name = f"Manual_{mode}_{freq_mhz:.3f}MHz"
+        
+        sample_rate = data.get("sample_rate", 2e6)
+        if sample_rate < 2e6:
+            sample_rate = 2e6
+
+        target_info = {
+            "name": capture_name,
+            "frequency": int(float(data.get("frequency_mhz", 0)) * 1e6),
+            "capture_duration_seconds": int(data.get("duration_sec", 10)),
+            "sample_rate": sample_rate,
+            "mode": data.get("mode", "RAW"),
+            "lna_gain": data.get("lna_gain", 40),
+            "vga_gain": data.get("vga_gain", 30),
+            "amp_enabled": data.get("amp_enabled", True)
+        }
+        
+        # Iniciar a thread que fará o trabalho e libertará o lock no final
+        threading.Thread(target=run_manual_capture, args=(target_info,)).start()
+        return {"status": "Captura manual iniciada."}
+        
+    except Exception as e:
+        # Caso ocorra um erro antes de a thread iniciar, liberta o lock
+        capture_lock.release()
+        logger.log(f"Erro ao iniciar captura manual: {e}", "ERROR")
+        return JSONResponse(content={"error": "Falha interna ao iniciar captura."}, status_code=500)
+
 
 @app.get("/api/status")
 def get_status():

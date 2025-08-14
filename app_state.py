@@ -1,6 +1,8 @@
 import threading
 from utils.logger import logger
 
+capture_lock = threading.Lock()
+
 SHARED_STATUS = {
     "hackrf_status": {"connected": False, "status_text": "Verificando..."},
     "next_pass": None,

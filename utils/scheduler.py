@@ -9,6 +9,7 @@ from utils.scanner import perform_capture
 from utils.sdr_manager import sdr_manager
 from utils.logger import logger
 from utils import db
+from app_state import capture_lock # Importa o lock partilhado
 
 TLE_CACHE_DIR = "tle_cache"
 os.makedirs(TLE_CACHE_DIR, exist_ok=True)
@@ -199,17 +200,32 @@ class Scheduler(threading.Thread):
                         )
                     ).total_seconds()
                     if 0 < wait_seconds <= 60:
-                        self._is_capturing.set()
-                        logger.log(
-                            f"Captura iminente de {next_pass['name']}. Duração: {next_pass['target_info']['capture_duration_seconds']}s. Preparando...",
-                            "WARN",
-                        )
-                        time.sleep(max(0, wait_seconds - 2))
-                        perform_capture(None, next_pass["target_info"])
-                        self._is_capturing.clear()
-                        self.shared_status["next_pass"] = None
-                        time.sleep(5)
-                        continue
+                        # Tenta adquirir o lock antes de iniciar a captura
+                        if not capture_lock.acquire(blocking=False):
+                            logger.log(f"Ignorando passagem de {next_pass['name']}, pois outra captura está em andamento.", "WARN")
+                            # Remove esta passagem para não tentar novamente no próximo ciclo
+                            if self.pass_predictions.get(next_pass['name']):
+                                self.pass_predictions[next_pass['name']].pop(0)
+                            time.sleep(CHECK_INTERVAL_SECONDS)
+                            continue # Volta ao início do loop
+                        
+                        # Se chegámos aqui, o lock foi adquirido.
+                        try:
+                            self._is_capturing.set()
+                            logger.log(
+                                f"Captura iminente de {next_pass['name']}. Duração: {next_pass['target_info']['capture_duration_seconds']}s. Preparando...",
+                                "WARN",
+                            )
+                            time.sleep(max(0, wait_seconds - 2))
+                            perform_capture(None, next_pass["target_info"])
+                        
+                        finally:
+                            # Garante que tudo é limpo e o lock é libertado
+                            self._is_capturing.clear()
+                            self.shared_status["next_pass"] = None
+                            capture_lock.release() # Libertar o lock
+                            time.sleep(5)
+                            continue # Continua para a próxima iteração do loop
                     else:
                         time.sleep(CHECK_INTERVAL_SECONDS)
                 else:
