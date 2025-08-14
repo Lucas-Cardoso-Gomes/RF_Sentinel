@@ -183,8 +183,18 @@ const RFSentinelApp = {
             } else {
                 newContent = signals.map(signal => {
                     const freqMhz = (signal.frequency / 1e6).toFixed(3);
+                    
+                    // --- CORREÇÃO DA DATA/HORA ---
+                    // Converte a string 'YYYY-MM-DD_HH-MM-SS' para um objeto Date válido
                     const utcDate = new Date(signal.timestamp.replace('_', 'T') + 'Z');
-                    const localTimestamp = utcDate.toLocaleString('pt-BR');
+                    let localTimestamp = 'Data inválida';
+                    if (!isNaN(utcDate)) {
+                        localTimestamp = utcDate.toLocaleString('pt-BR', {
+                            year: 'numeric', month: '2-digit', day: '2-digit',
+                            hour: '2-digit', minute: '2-digit', second: '2-digit'
+                        });
+                    }
+
                     const fileName = signal.filepath.split(/[\\\/]/).pop();
                     let imageCell = '<td class="p-3 text-center text-slate-500">N/A</td>';
                     if (signal.image_path) {

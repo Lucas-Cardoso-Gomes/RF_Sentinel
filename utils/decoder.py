@@ -1,7 +1,6 @@
-# utils/decoder.py
 import numpy as np
 from PIL import Image, ImageOps
-from scipy.signal import hilbert, resample, correlate
+from scipy.signal import resample, correlate, find_peaks, firwin, lfilter
 import os
 from utils.logger import logger
 
@@ -9,71 +8,104 @@ from utils.logger import logger
 APT_LINE_RATE_HZ = 2.0
 APT_SYNC_A_FREQ = 1040
 IMAGE_WIDTH_PX = 909
-PROCESSING_RATE = 11025 * 2
+PROCESSING_RATE = 22050
 
 class RealtimeAPTDecoder:
     def __init__(self, wav_filepath, original_samplerate):
         self.wav_filepath = wav_filepath
         self.original_samplerate = original_samplerate
         self.processing_rate = PROCESSING_RATE
-        self.line_width_samples = int(self.processing_rate / APT_LINE_RATE_HZ)
+        self.nominal_line_width = int(self.processing_rate / APT_LINE_RATE_HZ)
         self.sync_pattern = self._generate_sync_pattern()
         self.image_matrix = []
         self._buffer = np.array([], dtype=np.float32)
-        self.correlation_threshold = 5 
-        logger.log("Decodificador em tempo real iniciado.", "DEBUG")
+        self.processing_chunk_size = self.processing_rate * 20
+
+        # Cria o filtro de ruído (low-pass filter)
+        cutoff_hz = 5000.0
+        num_taps = 128
+        self.noise_filter = firwin(num_taps, cutoff_hz / (original_samplerate / 2))
 
     def _generate_sync_pattern(self):
-        sync_pulse_samples = int(0.005 * self.processing_rate)
+        num_cycles = 7
+        samples_per_cycle = self.processing_rate / APT_SYNC_A_FREQ
+        sync_pulse_samples = int(num_cycles * samples_per_cycle)
         t_sync = np.arange(sync_pulse_samples) / self.processing_rate
         return np.sin(2 * np.pi * APT_SYNC_A_FREQ * t_sync)
 
     def process_chunk(self, complex_chunk):
         am_demodulated = np.abs(complex_chunk)
-
-        num_samples_resampled = int(len(am_demodulated) * self.processing_rate / self.original_samplerate)
-        resampled_chunk = resample(am_demodulated, num_samples_resampled)
+        am_filtered = lfilter(self.noise_filter, 1.0, am_demodulated)
+        num_samples_resampled = int(len(am_filtered) * self.processing_rate / self.original_samplerate)
+        resampled_chunk = resample(am_filtered, num_samples_resampled)
         
         if np.max(resampled_chunk) > 0:
             resampled_chunk /= np.max(resampled_chunk)
 
         self._buffer = np.concatenate([self._buffer, resampled_chunk])
 
-        while len(self._buffer) >= self.line_width_samples:
-            line_data = self._buffer[:self.line_width_samples]
-            self._buffer = self._buffer[self.line_width_samples:]
+        while len(self._buffer) >= self.processing_chunk_size:
+            chunk_to_process = self._buffer[:self.processing_chunk_size]
+            self._buffer = self._buffer[self.processing_chunk_size:]
+            self._find_and_process_lines(chunk_to_process)
+
+    def _find_and_process_lines(self, data_chunk):
+        logger.log(f"A processar bloco de {len(data_chunk)/self.processing_rate:.1f}s para encontrar o ritmo do sinal...", "DEBUG")
+        
+        correlation = correlate(data_chunk, self.sync_pattern, mode='valid')
+        
+        corr_peak_val = np.max(correlation)
+        if corr_peak_val < 1.0: return
             
-            self._process_line(line_data)
+        peaks, _ = find_peaks(
+            correlation, 
+            height=corr_peak_val * 0.5,
+            distance=self.nominal_line_width * 0.9
+        )
 
-    def _process_line(self, line_data):
-        window_size = 10
-        line_data_smooth = np.convolve(line_data, np.ones(window_size)/window_size, mode='same')
-
-        correlation = correlate(line_data_smooth, self.sync_pattern, mode='valid')
-        
-        peak = np.argmax(correlation)
-        peak_value = correlation[peak]
-
-        if peak_value < self.correlation_threshold:
+        if len(peaks) < 3:
+            logger.log("Não foram encontrados picos de sincronização suficientes neste bloco.", "WARN")
             return
 
-        image_data_length = int(self.line_width_samples / 2) 
-        line_end = peak + image_data_length
+        # --- LÓGICA DE ROBUSTEZ ADICIONADA ---
+        # Filtra os intervalos para encontrar o ritmo real, ignorando outliers
+        intervals = np.diff(peaks)
+        sane_intervals = [i for i in intervals if self.nominal_line_width * 0.95 < i < self.nominal_line_width * 1.05]
         
-        if line_end > len(line_data):
-            return
+        if len(sane_intervals) < len(intervals) * 0.5: # Exige que pelo menos 50% dos intervalos sejam bons
+             logger.log(f"Ritmo de sinal instável detetado (mediana: {np.median(intervals):.2f}). A ignorar bloco.", "WARN")
+             return
 
-        image_line_data = line_data[peak:line_end]
+        avg_interval = np.median(sane_intervals)
+        effective_line_width = int(avg_interval)
         
-        line_scaled = (image_line_data * 255).astype(np.uint8)
-        line_img = Image.fromarray(line_scaled.reshape(1, -1))
-        corrected_line = line_img.resize((IMAGE_WIDTH_PX, 1), Image.Resampling.LANCZOS)
+        logger.log(f"Sincronização estabelecida! Encontradas {len(peaks)} linhas com um ritmo de {effective_line_width} amostras.", "INFO")
         
-        self.image_matrix.append(np.array(corrected_line))
+        image_samples_per_line = int(0.436 * effective_line_width)
+        
+        for peak_start in peaks:
+            start_of_image = peak_start + len(self.sync_pattern)
+            end_of_image = start_of_image + image_samples_per_line
+
+            if end_of_image > len(data_chunk): continue
+            
+            image_line_data = data_chunk[start_of_image:end_of_image]
+            
+            min_val, max_val = np.min(image_line_data), np.max(image_line_data)
+            if max_val > min_val:
+                image_line_data = (image_line_data - min_val) / (max_val - min_val)
+
+            line_scaled = (image_line_data * 255).astype(np.uint8)
+            line_img = Image.fromarray(line_scaled.reshape(1, -1), 'L')
+            corrected_line = line_img.resize((IMAGE_WIDTH_PX, 1), Image.Resampling.LANCZOS)
+            self.image_matrix.append(np.array(corrected_line))
 
     def finalize(self):
+        if len(self._buffer) > self.nominal_line_width:
+            self._find_and_process_lines(self._buffer)
+        
         if not self.image_matrix:
-            logger.log("Nenhuma linha de imagem foi decodificada. Imagem não será salva.", "WARN")
+            logger.log("Nenhuma linha de imagem válida foi descodificada. Imagem não será salva.", "WARN")
             return None
         
         logger.log(f"Finalizando imagem com {len(self.image_matrix)} linhas.", "INFO")

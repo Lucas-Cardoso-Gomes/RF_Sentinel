@@ -9,15 +9,33 @@ from utils import db
 from utils.analyzer import analyze_wav_file
 from utils.logger import logger
 from utils.scanner import perform_capture
+from utils.scheduler import Scheduler
 from app_state import SHARED_STATUS, scanner_event, scheduler_thread, capture_lock
 
 app = FastAPI(title="RFSentinel")
+
+@app.on_event("startup")
+async def startup_event():
+    logger.log("Evento de startup: a iniciar tarefas de fundo...", "INFO")
+    db.init_db()
+    global scheduler_thread
+    app.state.scheduler_thread = Scheduler(scanner_event, SHARED_STATUS)
+    app.state.scheduler_thread.start()
+    import app_state
+    app_state.scheduler_thread = app.state.scheduler_thread
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.log("Evento de shutdown: a encerrar tarefas de fundo...", "WARN")
+    if hasattr(app.state, 'scheduler_thread') and app.state.scheduler_thread.is_alive():
+        app.state.scheduler_thread.stop()
+        app.state.scheduler_thread.join(timeout=5)
+        logger.log("Thread do agendador parada com sucesso.", "SUCCESS")
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 def run_manual_capture(target_info):
-    """Função executada em uma thread para captura manual."""
     SHARED_STATUS["manual_capture_active"] = True
     logger.log("Iniciando captura manual por streaming...", "WARN")
     try:
@@ -27,7 +45,7 @@ def run_manual_capture(target_info):
     finally:
         logger.log("Captura manual finalizada.", "SUCCESS")
         SHARED_STATUS["manual_capture_active"] = False
-        capture_lock.release() # Garante que o lock é libertado no final
+        capture_lock.release()
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
@@ -46,26 +64,24 @@ def serve_capture_file(filepath: str):
 
 @app.post("/api/capture/manual")
 async def manual_capture_endpoint(request: Request):
-    # Tenta adquirir o lock de forma não-bloqueante.
-    # Se já estiver bloqueado, significa que outra captura está ativa.
     if not capture_lock.acquire(blocking=False):
         return JSONResponse(
             content={"error": "Outra captura já está em andamento."}, 
-            status_code=409 # Código de Conflito
+            status_code=409
         )
-
-    # Se chegámos aqui, o lock foi adquirido com sucesso.
     try:
         data = await request.json()
-        
         capture_name = data.get("name")
         if not capture_name or not capture_name.strip():
             mode = data.get("mode", "RAW")
             freq_mhz = float(data.get("frequency_mhz", 0))
             capture_name = f"Manual_{mode}_{freq_mhz:.3f}MHz"
         
+        # --- PROTEÇÃO RESTAURADA ---
+        # Garante que a taxa de amostragem nunca seja inferior ao mínimo do HackRF
         sample_rate = data.get("sample_rate", 2e6)
         if sample_rate < 2e6:
+            logger.log(f"Taxa de amostragem de {sample_rate}Hz é inválida. A reverter para o mínimo de 2MHz.", "WARN")
             sample_rate = 2e6
 
         target_info = {
@@ -79,20 +95,18 @@ async def manual_capture_endpoint(request: Request):
             "amp_enabled": data.get("amp_enabled", True)
         }
         
-        # Iniciar a thread que fará o trabalho e libertará o lock no final
         threading.Thread(target=run_manual_capture, args=(target_info,)).start()
         return {"status": "Captura manual iniciada."}
         
     except Exception as e:
-        # Caso ocorra um erro antes de a thread iniciar, liberta o lock
         capture_lock.release()
         logger.log(f"Erro ao iniciar captura manual: {e}", "ERROR")
         return JSONResponse(content={"error": "Falha interna ao iniciar captura."}, status_code=500)
 
-
 @app.get("/api/status")
-def get_status():
-    if not scheduler_thread:
+def get_status(request: Request):
+    scheduler = getattr(request.app.state, 'scheduler_thread', None)
+    if not scheduler:
         return {"error": "Scheduler not initialized"}
     return { 
         "scanner_status": "Ativo" if scanner_event.is_set() else "Pausado", 
@@ -100,14 +114,15 @@ def get_status():
         "next_pass": SHARED_STATUS["next_pass"], 
         "scheduler_log": SHARED_STATUS["scheduler_log"], 
         "manual_capture_active": SHARED_STATUS["manual_capture_active"], 
-        "is_scheduler_capturing": not scheduler_thread.is_idle() 
+        "is_scheduler_capturing": not scheduler.is_idle() 
     }
 
 @app.get("/api/passes")
-def get_upcoming_passes():
+def get_upcoming_passes(request: Request):
     all_passes = []
-    if scheduler_thread and scheduler_thread.pass_predictions:
-        for sat_passes in scheduler_thread.pass_predictions.values():
+    scheduler = getattr(request.app.state, 'scheduler_thread', None)
+    if scheduler and scheduler.pass_predictions:
+        for sat_passes in scheduler.pass_predictions.values():
             for p in sat_passes:
                 all_passes.append({
                     "name": p["name"],

@@ -9,20 +9,12 @@ from utils.win_dll_fix import apply as apply_win_dll_fix
 apply_win_dll_fix() 
 
 from utils import db
-from utils.scheduler import Scheduler
 from utils.logger import logger
-
-import app_state
+from web import app # Importa a app diretamente
 
 if __name__ == "__main__":
-    db.init_db()
-
-    app_state.scheduler_thread = Scheduler(app_state.scanner_event, app_state.SHARED_STATUS)
+    # A inicialização da base de dados e da thread foi movida para os eventos de ciclo de vida do FastAPI em web.py
     
-    app_state.scheduler_thread.start()
-
-    from web import app
-
     logger.log("Iniciando o servidor web Uvicorn...", "INFO")
     uvicorn.run(
         app, 
