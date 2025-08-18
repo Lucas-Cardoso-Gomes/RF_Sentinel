@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -121,8 +122,12 @@ def get_status(request: Request):
 def get_upcoming_passes(request: Request):
     all_passes = []
     scheduler = getattr(request.app.state, 'scheduler_thread', None)
-    if scheduler and scheduler.pass_predictions:
-        for sat_passes in scheduler.pass_predictions.values():
+    if scheduler:
+        with scheduler.predictions_lock:
+            # Copia os dados para evitar manter o lock durante o processamento
+            pass_predictions_copy = dict(scheduler.pass_predictions)
+
+        for sat_passes in pass_predictions_copy.values():
             for p in sat_passes:
                 all_passes.append({
                     "name": p["name"],
@@ -133,34 +138,50 @@ def get_upcoming_passes(request: Request):
     return all_passes
 
 @app.get("/api/signals")
-def get_signals():
-    return db.get_latest_signals(15)
+async def get_signals():
+    return await run_in_threadpool(db.get_latest_signals, 15)
 
 @app.get("/api/signal/info/{signal_id}")
-def get_signal_info(signal_id: int):
-    conn = db.get_db_connection()
-    signal = conn.execute("SELECT * FROM signals WHERE id = ?", (signal_id,)).fetchone()
-    conn.close()
-    if signal:
-        return dict(signal)
+async def get_signal_info(signal_id: int):
+    def _get_info_sync():
+        conn = db.get_db_connection()
+        try:
+            signal = conn.execute("SELECT * FROM signals WHERE id = ?", (signal_id,)).fetchone()
+            return dict(signal) if signal else None
+        finally:
+            conn.close()
+
+    signal_data = await run_in_threadpool(_get_info_sync)
+    if signal_data:
+        return signal_data
     return JSONResponse(content={"error": "Sinal não encontrado"}, status_code=404)
 
 @app.get("/api/signal/analyze/{signal_id}")
-def analyze_signal(signal_id: int):
-    conn = db.get_db_connection()
-    signal = conn.execute("SELECT filepath FROM signals WHERE id = ?", (signal_id,)).fetchone()
-    conn.close()
+async def analyze_signal(signal_id: int):
+    def _get_and_analyze_sync():
+        conn = db.get_db_connection()
+        try:
+            signal = conn.execute("SELECT filepath FROM signals WHERE id = ?", (signal_id,)).fetchone()
+        finally:
+            conn.close()
+
+        if not signal or not signal['filepath'] or not os.path.exists(signal['filepath']) or '_RAW' not in signal['filepath']:
+            return None, "Ficheiro não encontrado ou não é do tipo RAW."
+
+        analysis_data = analyze_wav_file(signal['filepath'])
+        if analysis_data:
+            return analysis_data, None
+        return None, "Falha ao processar ficheiro."
+
+    analysis_data, error_msg = await run_in_threadpool(_get_and_analyze_sync)
     
-    if not signal or not signal['filepath'] or not os.path.exists(signal['filepath']) or '_RAW' not in signal['filepath']:
-        return JSONResponse(content={"error": "Ficheiro não encontrado ou não é do tipo RAW."}, status_code=404)
-    
-    analysis_data = analyze_wav_file(signal['filepath'])
-    if analysis_data:
-        return analysis_data
-    return JSONResponse(content={"error": "Falha ao processar ficheiro."}, status_code=500)
+    if error_msg:
+        status_code = 404 if "não encontrado" in error_msg else 500
+        return JSONResponse(content={"error": error_msg}, status_code=status_code)
+    return analysis_data
 
 @app.post("/scanner/toggle")
-def toggle_scanner():
+async def toggle_scanner():
     if scanner_event.is_set():
         scanner_event.clear()
         logger.log("Scanner de satélites pausado pelo usuário.", "WARN")
@@ -170,28 +191,36 @@ def toggle_scanner():
     return {"status": "Ativo" if scanner_event.is_set() else "Pausado"}
 
 @app.delete("/api/signal/delete/{signal_id}")
-def delete_signal(signal_id: int):
+async def delete_signal(signal_id: int):
     logger.log(f"Recebida solicitação para apagar sinal ID: {signal_id}", "INFO")
-    paths = db.get_signal_paths_by_id(signal_id)
+
+    def _delete_sync():
+        paths = db.get_signal_paths_by_id(signal_id)
+        if not paths:
+            return {"error": "Sinal não encontrado no banco de dados.", "status_code": 404}
+
+        if paths.get("filepath") and os.path.exists(paths["filepath"]):
+            try:
+                os.remove(paths["filepath"])
+                logger.log(f"Ficheiro .wav apagado: {paths['filepath']}", "SUCCESS")
+            except OSError as e:
+                logger.log(f"Erro ao apagar ficheiro .wav {paths['filepath']}: {e}", "ERROR")
+
+        if paths.get("image_path") and os.path.exists(paths["image_path"]):
+            try:
+                os.remove(paths["image_path"])
+                logger.log(f"Ficheiro de imagem apagado: {paths['image_path']}", "SUCCESS")
+            except OSError as e:
+                logger.log(f"Erro ao apagar ficheiro de imagem {paths['image_path']}: {e}", "ERROR")
+
+        if db.delete_signal_by_id(signal_id):
+            return {"status": "Sinal e ficheiros apagados com sucesso."}
+
+        return {"error": "Falha ao apagar registo do banco de dados.", "status_code": 500}
+
+    result = await run_in_threadpool(_delete_sync)
     
-    if not paths:
-        return JSONResponse(content={"error": "Sinal não encontrado no banco de dados."}, status_code=404)
+    if "error" in result:
+        return JSONResponse(content={"error": result["error"]}, status_code=result["status_code"])
     
-    if paths.get("filepath") and os.path.exists(paths["filepath"]):
-        try:
-            os.remove(paths["filepath"])
-            logger.log(f"Ficheiro .wav apagado: {paths['filepath']}", "SUCCESS")
-        except OSError as e:
-            logger.log(f"Erro ao apagar ficheiro .wav {paths['filepath']}: {e}", "ERROR")
-            
-    if paths.get("image_path") and os.path.exists(paths["image_path"]):
-        try:
-            os.remove(paths["image_path"])
-            logger.log(f"Ficheiro de imagem apagado: {paths['image_path']}", "SUCCESS")
-        except OSError as e:
-            logger.log(f"Erro ao apagar ficheiro de imagem {paths['image_path']}: {e}", "ERROR")
-            
-    if db.delete_signal_by_id(signal_id):
-        return {"status": "Sinal e ficheiros apagados com sucesso."}
-    
-    return JSONResponse(content={"error": "Falha ao apagar registo do banco de dados."}, status_code=500)
+    return {"status": result["status"]}

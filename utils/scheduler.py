@@ -53,6 +53,7 @@ class Scheduler(threading.Thread):
         self.ts = load_skyfield.timescale()
         self._stop_event = threading.Event()
         self._is_capturing = threading.Event()
+        self.predictions_lock = threading.Lock()
         self.daemon = True
         self.satellites = {}
         self.pass_predictions = {}
@@ -95,17 +96,20 @@ class Scheduler(threading.Thread):
                         "target_info": target_info_pass,
                     }
                 )
-        self.pass_predictions[sat_name] = future_passes
+        with self.predictions_lock:
+            self.pass_predictions[sat_name] = future_passes
         logger.log(f"Encontradas {len(future_passes)} passagens para {sat_name}.", "DEBUG")
 
     def _get_next_imminent_pass_from_cache(self):
         all_imminent_passes = []
         now_utc = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc)
-        for sat_name, passes in self.pass_predictions.items():
-            valid_passes = [p for p in passes if p["start"].utc_datetime() > now_utc]
-            if valid_passes:
-                all_imminent_passes.append(valid_passes[0])
-            self.pass_predictions[sat_name] = valid_passes
+        with self.predictions_lock:
+            for sat_name, passes in self.pass_predictions.items():
+                valid_passes = [p for p in passes if p["start"].utc_datetime() > now_utc]
+                if valid_passes:
+                    all_imminent_passes.append(valid_passes[0])
+                self.pass_predictions[sat_name] = valid_passes
+
         if not all_imminent_passes:
             return None
         all_imminent_passes.sort(key=lambda p: p["start"].utc_datetime())
@@ -121,12 +125,15 @@ class Scheduler(threading.Thread):
 
         while not self._stop_event.is_set():
             try:
-                # Alterado para acordar a cada segundo e verificar o _stop_event
-                self.scanner_event.wait(timeout=1)
+                # Se o scanner estiver pausado, aguarda eficientemente aqui.
+                # O timeout permite que o loop verifique o evento de parada periodicamente.
+                self.scanner_event.wait(timeout=5)
+
+                # Se, após a espera, o scanner ainda estiver pausado, apenas continue o loop.
                 if not self.scanner_event.is_set():
-                    # Se estiver pausado, volta ao início do loop para continuar a verificar
                     continue
 
+                # O scanner está ativo, prossiga com a lógica principal.
                 with open("config.json", "r") as f:
                     config = json.load(f)
                 station_geo = Topos(
@@ -179,9 +186,13 @@ class Scheduler(threading.Thread):
                     recalculate_passes_needed = True
                     last_tle_update_time = now
 
-                if recalculate_passes_needed or not self.pass_predictions:
+                with self.predictions_lock:
+                    recalc_needed = recalculate_passes_needed or not self.pass_predictions
+
+                if recalc_needed:
                     logger.log("Recalculando todas as previsões de passagem...", "INFO")
-                    self.pass_predictions.clear()
+                    with self.predictions_lock:
+                        self.pass_predictions.clear()
                     for name, sat_obj in self.satellites.items():
                         self._calculate_and_cache_passes(station_geo, name, sat_obj, targets)
 
@@ -207,8 +218,9 @@ class Scheduler(threading.Thread):
                     if 0 < wait_seconds <= 60:
                         if not capture_lock.acquire(blocking=False):
                             logger.log(f"Ignorando passagem de {next_pass['name']}, pois outra captura está em andamento.", "WARN")
-                            if self.pass_predictions.get(next_pass['name']):
-                                self.pass_predictions[next_pass['name']].pop(0)
+                            with self.predictions_lock:
+                                if self.pass_predictions.get(next_pass['name']):
+                                    self.pass_predictions[next_pass['name']].pop(0)
                             time.sleep(CHECK_INTERVAL_SECONDS)
                             continue
                         

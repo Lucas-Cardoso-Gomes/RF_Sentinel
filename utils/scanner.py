@@ -4,6 +4,7 @@ import datetime
 import wave
 import os
 import threading
+import queue
 
 from utils import db
 from utils.decoder import RealtimeAPTDecoder
@@ -76,6 +77,23 @@ def perform_capture(sdr_unused, target_info):
 
             process = subprocess.Popen(command_str, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
 
+            decode_queue = None
+            decode_thread = None
+
+            if decoder:
+                decode_queue = queue.Queue(maxsize=100)
+
+                def decoder_worker():
+                    while True:
+                        item = decode_queue.get()
+                        if item is None:
+                            break
+                        decoder.process_chunk(item)
+                        decode_queue.task_done()
+
+                decode_thread = threading.Thread(target=decoder_worker, daemon=True)
+                decode_thread.start()
+
             total_bytes_processed = 0
             chunk_size_bytes = 1024 * 512
 
@@ -94,12 +112,12 @@ def perform_capture(sdr_unused, target_info):
 
                 if mode == 'RAW':
                     wf.writeframes(chunk)
-                    if decoder:
+                    if decode_queue:
                         iq_data = np.frombuffer(chunk, dtype=np.int8)
                         iq_data_float = iq_data.astype(np.float32) / 128.0
                         complex_data = iq_data_float[0::2] + 1j * iq_data_float[1::2]
-                        decoder.process_chunk(complex_data)
-                else:
+                        decode_queue.put(complex_data)
+                else: # Fallback para outros modos (AM/FM, etc.)
                     iq_data = np.frombuffer(chunk, dtype=np.int8)
                     iq_data_float = iq_data.astype(np.float32) / 128.0
                     complex_data = iq_data_float[0::2] + 1j * iq_data_float[1::2]
@@ -108,9 +126,14 @@ def perform_capture(sdr_unused, target_info):
                     output_chunk = (x * 32767).astype(np.int16)
                     wf.writeframes(output_chunk.tobytes())
 
-            logger.log(f"Captura finalizada. Total de bytes processados: {total_bytes_processed / (1024*1024):.2f} MB", "SUCCESS")
+            logger.log(f"Captura de I/O finalizada. Total de bytes processados: {total_bytes_processed / (1024*1024):.2f} MB", "SUCCESS")
         
-        # O 'with' statement já fechou o ficheiro wf
+        if decode_thread:
+            logger.log("A aguardar o fim do processamento do decodificador...", "INFO")
+            decode_queue.put(None)
+            decode_thread.join()
+            logger.log("Processamento do decodificador concluído.", "SUCCESS")
+
         if decoder:
             image_path = decoder.finalize()
 
