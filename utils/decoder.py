@@ -67,17 +67,19 @@ class RealtimeAPTDecoder:
             logger.log("Não foram encontrados picos de sincronização suficientes neste bloco.", "WARN")
             return
 
-        # --- LÓGICA DE ROBUSTEZ ADICIONADA ---
-        # Filtra os intervalos para encontrar o ritmo real, ignorando outliers
+        # --- LÓGICA DE ROBUSTEZ APRIMORADA ---
+        # Usa a mediana dos intervalos para ser mais tolerante a ruído e Doppler, como solicitado.
         intervals = np.diff(peaks)
-        sane_intervals = [i for i in intervals if self.nominal_line_width * 0.95 < i < self.nominal_line_width * 1.05]
-        
-        if len(sane_intervals) < len(intervals) * 0.5: # Exige que pelo menos 50% dos intervalos sejam bons
-             logger.log(f"Ritmo de sinal instável detetado (mediana: {np.median(intervals):.2f}). A ignorar bloco.", "WARN")
-             return
+        median_interval = np.median(intervals)
 
-        avg_interval = np.median(sane_intervals)
-        effective_line_width = int(avg_interval)
+        # Verifica se a mediana está dentro de uma janela mais ampla e razoável.
+        # Isto previne erros com sinais completamente inválidos, mas permite variações.
+        if not (self.nominal_line_width * 0.75 < median_interval < self.nominal_line_width * 1.25):
+            logger.log(f"Ritmo de sinal muito anómalo detetado (mediana: {median_interval:.2f}). A ignorar bloco.", "WARN")
+            return
+
+        # Aceita o ritmo mediano como o ritmo real para este bloco, tentando decodificar mesmo com baixa qualidade.
+        effective_line_width = int(median_interval)
         
         logger.log(f"Sincronização estabelecida! Encontradas {len(peaks)} linhas com um ritmo de {effective_line_width} amostras.", "INFO")
         
