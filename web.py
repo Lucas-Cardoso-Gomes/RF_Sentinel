@@ -85,6 +85,9 @@ async def manual_capture_endpoint(request: Request):
             logger.log(f"Taxa de amostragem de {sample_rate}Hz é inválida. A reverter para o mínimo de 2MHz.", "WARN")
             sample_rate = 2e6
 
+        decoder_type = data.get("decoder_type", "none")
+        force_decode = data.get("force_decode", False)
+
         target_info = {
             "name": capture_name,
             "frequency": int(float(data.get("frequency_mhz", 0)) * 1e6),
@@ -93,17 +96,15 @@ async def manual_capture_endpoint(request: Request):
             "mode": data.get("mode", "RAW"),
             "lna_gain": data.get("lna_gain", 40),
             "vga_gain": data.get("vga_gain", 30),
-            "amp_enabled": data.get("amp_enabled", True)
+            "amp_enabled": data.get("amp_enabled", True),
+            "force_decode": force_decode
         }
         
-        # --- CORREÇÃO PARA DECODIFICAÇÃO MANUAL ---
-        # Adiciona o tipo de alvo para acionar o decodificador correto com base no nome.
-        if 'NOAA' in capture_name.upper():
-            target_info['type'] = 'APT'
-            logger.log("Captura manual de NOAA (APT) detetada. O decodificador será ativado.", "INFO")
-        elif 'ISS' in capture_name.upper():
-            target_info['type'] = 'SSTV'
-            logger.log("Captura manual da ISS (SSTV) detetada. O pós-processamento será ativado.", "INFO")
+        if decoder_type != "none":
+            target_info['type'] = decoder_type
+            logger.log(f"Decodificador '{decoder_type}' selecionado para captura manual.", "INFO")
+            if force_decode:
+                logger.log("Opção 'Forçar Decodificação' está ativa.", "WARN")
 
         threading.Thread(target=run_manual_capture, args=(target_info,)).start()
         return {"status": "Captura manual iniciada."}

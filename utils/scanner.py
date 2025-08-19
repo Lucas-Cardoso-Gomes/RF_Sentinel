@@ -33,6 +33,7 @@ def perform_capture(sdr_unused, target_info):
         duration_sec = target_info['capture_duration_seconds']
         target_name = target_info.get('name', 'capture')
         target_type = target_info.get('type', 'GENERIC')
+        force_decode = target_info.get('force_decode', False)
         lna_gain = target_info.get("lna_gain", 40)
         vga_gain = target_info.get("vga_gain", 30)
         amp_enabled = target_info.get("amp_enabled", True)
@@ -58,7 +59,11 @@ def perform_capture(sdr_unused, target_info):
                 wf.setframerate(48000)
 
             if target_type == 'APT' and mode == 'RAW':
-                decoder = RealtimeAPTDecoder(filepath, sample_rate)
+                decoder = RealtimeAPTDecoder(
+                    wav_filepath=filepath,
+                    original_samplerate=sample_rate,
+                    force_decode=force_decode
+                )
 
             command_list = [
                 'hackrf_transfer',

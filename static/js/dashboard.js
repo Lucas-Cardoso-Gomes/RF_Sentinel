@@ -21,6 +21,8 @@ const RFSentinelApp = {
             captureSampleRateInput: document.getElementById('capture-sample-rate'),
             captureDurationInput: document.getElementById('capture-duration'),
             captureModeInput: document.getElementById('capture-mode'),
+            captureDecoderInput: document.getElementById('capture-decoder'),
+            forceDecodeInput: document.getElementById('force-decode'),
             lnaGainInput: document.getElementById('lna-gain'),
             lnaGainValue: document.getElementById('lna-gain-value'),
             vgaGainInput: document.getElementById('vga-gain'),
@@ -109,7 +111,9 @@ const RFSentinelApp = {
                         mode: elements.captureModeInput.value,
                         lna_gain: parseInt(elements.lnaGainInput.value),
                         vga_gain: parseInt(elements.vgaGainInput.value),
-                        amp_enabled: elements.ampEnableInput.checked
+                        amp_enabled: elements.ampEnableInput.checked,
+                        decoder_type: elements.captureDecoderInput.value,
+                        force_decode: elements.forceDecodeInput.checked
                     })
                 });
                 if (!response.ok) {

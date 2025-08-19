@@ -11,9 +11,10 @@ IMAGE_WIDTH_PX = 909
 PROCESSING_RATE = 22050
 
 class RealtimeAPTDecoder:
-    def __init__(self, wav_filepath, original_samplerate):
+    def __init__(self, wav_filepath, original_samplerate, force_decode=False):
         self.wav_filepath = wav_filepath
         self.original_samplerate = original_samplerate
+        self.force_decode = force_decode
         self.processing_rate = PROCESSING_RATE
         self.nominal_line_width = int(self.processing_rate / APT_LINE_RATE_HZ)
         self.sync_pattern = self._generate_sync_pattern()
@@ -74,9 +75,12 @@ class RealtimeAPTDecoder:
 
         # Verifica se a mediana está dentro de uma janela mais ampla e razoável.
         # Isto previne erros com sinais completamente inválidos, mas permite variações.
-        if not (self.nominal_line_width * 0.75 < median_interval < self.nominal_line_width * 1.25):
+        if not self.force_decode and not (self.nominal_line_width * 0.75 < median_interval < self.nominal_line_width * 1.25):
             logger.log(f"Ritmo de sinal muito anómalo detetado (mediana: {median_interval:.2f}). A ignorar bloco.", "WARN")
             return
+        elif self.force_decode:
+            logger.log(f"Forçando decodificação com ritmo de sinal instável (mediana: {median_interval:.2f}).", "WARN")
+
 
         # Aceita o ritmo mediano como o ritmo real para este bloco, tentando decodificar mesmo com baixa qualidade.
         effective_line_width = int(median_interval)
