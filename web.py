@@ -96,6 +96,15 @@ async def manual_capture_endpoint(request: Request):
             "amp_enabled": data.get("amp_enabled", True)
         }
         
+        # --- CORREÇÃO PARA DECODIFICAÇÃO MANUAL ---
+        # Adiciona o tipo de alvo para acionar o decodificador correto com base no nome.
+        if 'NOAA' in capture_name.upper():
+            target_info['type'] = 'APT'
+            logger.log("Captura manual de NOAA (APT) detetada. O decodificador será ativado.", "INFO")
+        elif 'ISS' in capture_name.upper():
+            target_info['type'] = 'SSTV'
+            logger.log("Captura manual da ISS (SSTV) detetada. O pós-processamento será ativado.", "INFO")
+
         threading.Thread(target=run_manual_capture, args=(target_info,)).start()
         return {"status": "Captura manual iniciada."}
         
