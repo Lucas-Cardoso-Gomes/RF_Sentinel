@@ -109,7 +109,7 @@ class Scheduler(threading.Thread):
                 if valid_passes:
                     all_imminent_passes.append(valid_passes[0])
                 self.pass_predictions[sat_name] = valid_passes
-
+        
         if not all_imminent_passes:
             return None
         all_imminent_passes.sort(key=lambda p: p["start"].utc_datetime())
@@ -128,7 +128,7 @@ class Scheduler(threading.Thread):
                 # Se o scanner estiver pausado, aguarda eficientemente aqui.
                 # O timeout permite que o loop verifique o evento de parada periodicamente.
                 self.scanner_event.wait(timeout=5)
-
+                
                 # Se, após a espera, o scanner ainda estiver pausado, apenas continue o loop.
                 if not self.scanner_event.is_set():
                     continue
@@ -188,7 +188,7 @@ class Scheduler(threading.Thread):
 
                 with self.predictions_lock:
                     recalc_needed = recalculate_passes_needed or not self.pass_predictions
-
+                
                 if recalc_needed:
                     logger.log("Recalculando todas as previsões de passagem...", "INFO")
                     with self.predictions_lock:

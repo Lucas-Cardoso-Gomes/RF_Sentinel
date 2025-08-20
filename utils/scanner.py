@@ -60,8 +60,8 @@ def perform_capture(sdr_unused, target_info):
 
             if target_type == 'APT' and mode == 'RAW':
                 decoder = RealtimeAPTDecoder(
-                    wav_filepath=filepath,
-                    original_samplerate=sample_rate,
+                    wav_filepath=filepath, 
+                    original_samplerate=sample_rate, 
                     force_decode=force_decode
                 )
 
@@ -81,13 +81,13 @@ def perform_capture(sdr_unused, target_info):
             logger.log(f"Iniciando captura controlada por samples: {command_str}", "INFO")
 
             process = subprocess.Popen(command_str, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
-
+            
             decode_queue = None
             decode_thread = None
 
             if decoder:
                 decode_queue = queue.Queue(maxsize=100)
-
+                
                 def decoder_worker():
                     while True:
                         item = decode_queue.get()
@@ -106,9 +106,9 @@ def perform_capture(sdr_unused, target_info):
                 chunk = process.stdout.read(chunk_size_bytes)
                 if not chunk:
                     break
-
+                
                 total_bytes_processed += len(chunk)
-
+                
                 if len(chunk) % 2 != 0:
                     chunk = chunk[:-1]
 

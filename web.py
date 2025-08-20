@@ -136,7 +136,7 @@ def get_upcoming_passes(request: Request):
         with scheduler.predictions_lock:
             # Copia os dados para evitar manter o lock durante o processamento
             pass_predictions_copy = dict(scheduler.pass_predictions)
-
+        
         for sat_passes in pass_predictions_copy.values():
             for p in sat_passes:
                 all_passes.append({
@@ -174,10 +174,10 @@ async def analyze_signal(signal_id: int):
             signal = conn.execute("SELECT filepath FROM signals WHERE id = ?", (signal_id,)).fetchone()
         finally:
             conn.close()
-
+        
         if not signal or not signal['filepath'] or not os.path.exists(signal['filepath']) or '_RAW' not in signal['filepath']:
             return None, "Ficheiro não encontrado ou não é do tipo RAW."
-
+        
         analysis_data = analyze_wav_file(signal['filepath'])
         if analysis_data:
             return analysis_data, None
@@ -208,24 +208,24 @@ async def delete_signal(signal_id: int):
         paths = db.get_signal_paths_by_id(signal_id)
         if not paths:
             return {"error": "Sinal não encontrado no banco de dados.", "status_code": 404}
-
+        
         if paths.get("filepath") and os.path.exists(paths["filepath"]):
             try:
                 os.remove(paths["filepath"])
                 logger.log(f"Ficheiro .wav apagado: {paths['filepath']}", "SUCCESS")
             except OSError as e:
                 logger.log(f"Erro ao apagar ficheiro .wav {paths['filepath']}: {e}", "ERROR")
-
+                
         if paths.get("image_path") and os.path.exists(paths["image_path"]):
             try:
                 os.remove(paths["image_path"])
                 logger.log(f"Ficheiro de imagem apagado: {paths['image_path']}", "SUCCESS")
             except OSError as e:
                 logger.log(f"Erro ao apagar ficheiro de imagem {paths['image_path']}: {e}", "ERROR")
-
+                
         if db.delete_signal_by_id(signal_id):
             return {"status": "Sinal e ficheiros apagados com sucesso."}
-
+        
         return {"error": "Falha ao apagar registo do banco de dados.", "status_code": 500}
 
     result = await run_in_threadpool(_delete_sync)
