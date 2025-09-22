@@ -1,9 +1,0 @@
-fastapi
-uvicorn
-jinja2
-requests
-numpy
-scipy
-pillow
-skyfield
-SoapySDR
