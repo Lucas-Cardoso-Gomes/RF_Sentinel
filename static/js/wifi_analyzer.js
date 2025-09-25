@@ -7,24 +7,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let selectedBand = null;
     let websocket = null;
-    let spectrumData = {
-        x: [],
-        y: [],
-        type: 'scatter',
-        mode: 'lines',
-        line: { color: '#007bff' }
-    };
+    let traces = []; // Array para armazenar os últimos 10 traces
+    let currentTraceIndex = 0;
+    let lastFreq = 0;
 
     // Inicializa o gráfico Plotly
     const layout = {
-        title: 'Análise de Espectro em Tempo Real',
+        title: 'Análise de Espectro com Histórico (Últimas 10 Varreduras)',
         xaxis: { title: 'Frequência (MHz)' },
         yaxis: { title: 'Intensidade (dBm)', range: [-100, 0] },
         plot_bgcolor: '#1e1e1e',
         paper_bgcolor: '#1e1e1e',
-        font: { color: '#ffffff' }
+        font: { color: '#ffffff' },
+        showlegend: false
     };
-    Plotly.newPlot(plotContainer, [spectrumData], layout);
+    Plotly.newPlot(plotContainer, [], layout);
 
     bandButtons.forEach(button => {
         button.addEventListener('click', () => {
@@ -51,10 +48,10 @@ document.addEventListener('DOMContentLoaded', () => {
             stopBtn.disabled = false;
             bandButtons.forEach(btn => btn.disabled = true);
 
-            // Limpa dados antigos ao iniciar uma nova varredura
-            spectrumData.x = [];
-            spectrumData.y = [];
-            Plotly.redraw(plotContainer);
+            // Limpa o histórico de varreduras
+            traces = [];
+            lastFreq = 0;
+            Plotly.react(plotContainer, [], layout);
         };
 
         websocket.onmessage = (event) => {
@@ -67,23 +64,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // Encontra o índice da frequência para atualizar ou adicionar
-            const index = spectrumData.x.indexOf(data.freq_mhz);
-            if (index > -1) {
-                spectrumData.y[index] = data.dbm;
-            } else {
-                // Adiciona o novo ponto de dados e mantém a ordem
-                spectrumData.x.push(data.freq_mhz);
-                spectrumData.y.push(data.dbm);
+            // Detecta o início de uma nova varredura quando a frequência reseta
+            if (data.freq_mhz < lastFreq) {
+                // Adiciona a varredura completa ao histórico
+                if (traces.length >= 10) {
+                    traces.shift(); // Remove a mais antiga
+                }
 
-                // Ordena os arrays com base na frequência
-                const sortedIndices = spectrumData.x.map((_, i) => i).sort((a, b) => spectrumData.x[a] - spectrumData.x[b]);
-                spectrumData.x = sortedIndices.map(i => spectrumData.x[i]);
-                spectrumData.y = sortedIndices.map(i => spectrumData.y[i]);
+                // Cria um novo trace para a nova varredura
+                traces.push({
+                    x: [],
+                    y: [],
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: { color: 'rgba(0, 255, 0, 1)' } // Verde sólido para a nova
+                });
+
+                // Atualiza as cores e opacidades do histórico
+                updateTraceColors();
             }
 
-            // Atualiza o gráfico de forma eficiente
-            Plotly.react(plotContainer, [spectrumData], layout);
+            lastFreq = data.freq_mhz;
+
+            if (traces.length === 0) {
+                // Inicia o primeiro trace
+                 traces.push({
+                    x: [],
+                    y: [],
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: { color: 'rgba(0, 255, 0, 1)' }
+                });
+            }
+
+            // Adiciona o ponto de dados ao trace atual (o último do array)
+            const currentTrace = traces[traces.length - 1];
+            currentTrace.x.push(data.freq_mhz);
+            currentTrace.y.push(data.dbm);
+
+            // Re-renderiza o gráfico com todos os traces
+            Plotly.react(plotContainer, traces, layout);
         };
 
         websocket.onclose = () => {
@@ -101,19 +121,29 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     });
 
-    const stopScan = () => {
+    stopBtn.addEventListener('click', stopScan);
+
+    function stopScan() {
         if (websocket) {
             websocket.close();
             statusText.textContent = 'Varredura parada pelo usuário.';
         }
-    };
+    }
 
-    stopBtn.addEventListener('click', stopScan);
+    function updateTraceColors() {
+        const totalTraces = traces.length;
+        traces.forEach((trace, i) => {
+            const opacity = 1 - (totalTraces - 1 - i) * 0.1;
+            trace.line.color = `rgba(0, 255, 0, ${Math.max(0.1, opacity)})`;
+        });
+    }
 
     function resetControls() {
         websocket = null;
         startBtn.disabled = !selectedBand;
         stopBtn.disabled = true;
         bandButtons.forEach(btn => btn.disabled = false);
+        // Limpa o gráfico quando a varredura é parada ou perdida
+        Plotly.react(plotContainer, [], layout);
     }
 });
