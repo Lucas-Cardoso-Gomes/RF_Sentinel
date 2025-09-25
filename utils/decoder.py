@@ -2,7 +2,7 @@ import numpy as np
 from PIL import Image, ImageOps
 from scipy.signal import resample, correlate, find_peaks, firwin, lfilter
 import os
-from utils.logger import logger
+from .state_manager import AppState
 
 # --- Constantes Otimizadas para APT ---
 APT_LINE_RATE_HZ = 2.0
@@ -11,7 +11,8 @@ IMAGE_WIDTH_PX = 909
 PROCESSING_RATE = 22050
 
 class RealtimeAPTDecoder:
-    def __init__(self, wav_filepath, original_samplerate, force_decode=False):
+    def __init__(self, app_state: AppState, wav_filepath: str, original_samplerate: int, force_decode: bool = False):
+        self.app_state = app_state
         self.wav_filepath = wav_filepath
         self.original_samplerate = original_samplerate
         self.force_decode = force_decode
@@ -51,7 +52,7 @@ class RealtimeAPTDecoder:
             self._find_and_process_lines(chunk_to_process)
 
     def _find_and_process_lines(self, data_chunk):
-        logger.log(f"A processar bloco de {len(data_chunk)/self.processing_rate:.1f}s para encontrar o ritmo do sinal...", "DEBUG")
+        self.app_state.log(f"Processando bloco de {len(data_chunk)/self.processing_rate:.1f}s para encontrar ritmo...", "DEBUG")
         
         correlation = correlate(data_chunk, self.sync_pattern, mode='valid')
         
@@ -65,27 +66,21 @@ class RealtimeAPTDecoder:
         )
 
         if len(peaks) < 3:
-            logger.log("Não foram encontrados picos de sincronização suficientes neste bloco.", "WARN")
+            self.app_state.log("Picos de sincronização insuficientes no bloco.", "WARN")
             return
 
-        # --- LÓGICA DE ROBUSTEZ APRIMORADA ---
-        # Usa a mediana dos intervalos para ser mais tolerante a ruído e Doppler, como solicitado.
         intervals = np.diff(peaks)
         median_interval = np.median(intervals)
 
-        # Verifica se a mediana está dentro de uma janela mais ampla e razoável.
-        # Isto previne erros com sinais completamente inválidos, mas permite variações.
+        # Validação do ritmo do sinal para evitar processamento de ruído.
         if not self.force_decode and not (self.nominal_line_width * 0.75 < median_interval < self.nominal_line_width * 1.25):
-            logger.log(f"Ritmo de sinal muito anómalo detetado (mediana: {median_interval:.2f}). A ignorar bloco.", "WARN")
+            self.app_state.log(f"Ritmo de sinal anômalo (mediana: {median_interval:.2f}). Ignorando bloco.", "WARN")
             return
         elif self.force_decode:
-            logger.log(f"Forçando decodificação com ritmo de sinal instável (mediana: {median_interval:.2f}).", "WARN")
+            self.app_state.log(f"Forçando decodificação com ritmo instável (mediana: {median_interval:.2f}).", "WARN")
 
-
-        # Aceita o ritmo mediano como o ritmo real para este bloco, tentando decodificar mesmo com baixa qualidade.
         effective_line_width = int(median_interval)
-        
-        logger.log(f"Sincronização estabelecida! Encontradas {len(peaks)} linhas com um ritmo de {effective_line_width} amostras.", "INFO")
+        self.app_state.log(f"Sincronização OK! {len(peaks)} linhas com ritmo de {effective_line_width} amostras.", "INFO")
         
         image_samples_per_line = int(0.436 * effective_line_width)
         
@@ -107,24 +102,26 @@ class RealtimeAPTDecoder:
             self.image_matrix.append(np.array(corrected_line))
 
     def finalize(self):
+        # Processa qualquer dado restante no buffer.
         if len(self._buffer) > self.nominal_line_width:
             self._find_and_process_lines(self._buffer)
         
         if not self.image_matrix:
-            logger.log("Nenhuma linha de imagem válida foi descodificada. Imagem não será salva.", "WARN")
+            self.app_state.log("Nenhuma linha de imagem válida foi decodificada. Imagem não será salva.", "WARN")
             return None
         
-        logger.log(f"Finalizando imagem com {len(self.image_matrix)} linhas.", "INFO")
+        self.app_state.log(f"Finalizando imagem com {len(self.image_matrix)} linhas.", "INFO")
         final_matrix = np.vstack(self.image_matrix)
         
-        img_final = Image.fromarray(final_matrix)
-        img_final = ImageOps.equalize(img_final)
+        img = Image.fromarray(final_matrix)
+        img = ImageOps.equalize(img) # Melhora o contraste da imagem final.
 
         output_dir = os.path.join("captures", "images")
         os.makedirs(output_dir, exist_ok=True)
+
         base_filename = os.path.splitext(os.path.basename(self.wav_filepath))[0]
         output_filepath = os.path.join(output_dir, f"{base_filename}.png")
         
-        img_final.save(output_filepath)
-        logger.log(f"✅ Imagem APT aprimorada salva em: {output_filepath}", "SUCCESS")
+        img.save(output_filepath)
+        self.app_state.log(f"✅ Imagem APT salva em: {output_filepath}", "SUCCESS")
         return output_filepath

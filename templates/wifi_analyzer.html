@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analisador de Espectro Wi-Fi - RF Sentinel</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.plot.ly/plotly-2.20.0.min.js"></script>
+    <style>
+        .band-selector button.active {
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        #plot-container {
+            width: 100%;
+            height: 500px;
+            background-color: #1e1e1e;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Analisador de Espectro Wi-Fi</h1>
+            <p>Monitore em tempo real as bandas de frequência de Wi-Fi.</p>
+            <a href="/" class="button-secondary">Voltar ao Painel Principal</a>
+        </header>
+
+        <main>
+            <div class="card">
+                <div class="card-header">
+                    <h2>Controles</h2>
+                </div>
+                <div class="card-content">
+                    <div class="band-selector">
+                        <span>Selecione a Banda:</span>
+                        <button data-band="2.4" class="button-primary">2.4 GHz</button>
+                        <button data-band="5" class="button-primary">5 GHz</button>
+                        <button data-band="6" class="button-primary">6 GHz</button>
+                    </div>
+                    <div class="controls mt-4">
+                        <button id="start-scan-btn" class="button-success" disabled>Iniciar Varredura</button>
+                        <button id="stop-scan-btn" class="button-danger" disabled>Parar Varredura</button>
+                    </div>
+                     <p id="status-text" class="mt-2">Selecione uma banda para começar.</p>
+                </div>
+            </div>
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h2>Visualização do Espectro</h2>
+                </div>
+                <div class="card-content">
+                    <div id="plot-container"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/js/wifi_analyzer.js"></script>
+</body>
+</html>

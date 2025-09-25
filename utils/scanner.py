@@ -8,14 +8,14 @@ import queue
 
 from utils import db
 from utils.decoder import RealtimeAPTDecoder
-from utils.logger import logger
+from .state_manager import AppState
 
 try:
     from utils.iss_post_process import process_iss_capture
 except ImportError:
     process_iss_capture = None
 
-def perform_capture(sdr_unused, target_info):
+def perform_capture(app_state: AppState, sdr_unused, target_info: dict):
     """
     Executa a captura de sinal usando hackrf_transfer, delegando o controle de duração
     ao próprio processo para garantir um encerramento limpo e robusto.
@@ -49,7 +49,6 @@ def perform_capture(sdr_unused, target_info):
 
         with wave.open(filepath, 'wb') as wf:
             if mode == 'RAW':
-                # Dados do HackRF são 8-bit, então o sampwidth é 1
                 wf.setnchannels(2)
                 wf.setsampwidth(1)
                 wf.setframerate(int(sample_rate))
@@ -59,15 +58,16 @@ def perform_capture(sdr_unused, target_info):
                 wf.setframerate(48000)
 
             if target_type == 'APT' and mode == 'RAW':
+                # O decodificador agora também recebe o app_state para logar seu progresso.
                 decoder = RealtimeAPTDecoder(
+                    app_state=app_state,
                     wav_filepath=filepath,
                     original_samplerate=sample_rate,
                     force_decode=force_decode
                 )
 
-            command_list = [
-                'hackrf_transfer',
-                '-r', '-',
+            command = [
+                'hackrf_transfer', '-r', '-',
                 '-f', str(frequency),
                 '-s', str(sample_rate),
                 '-n', str(num_samples),
@@ -75,12 +75,12 @@ def perform_capture(sdr_unused, target_info):
                 '-g', str(vga_gain),
             ]
             if amp_enabled:
-                command_list.extend(['-a', '1'])
+                command.append('-a')
+                command.append('1')
             
-            command_str = ' '.join(command_list)
-            logger.log(f"Iniciando captura controlada por samples: {command_str}", "INFO")
+            app_state.log(f"Comando de captura: {' '.join(command)}", "INFO")
 
-            process = subprocess.Popen(command_str, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
             
             decode_queue = None
             decode_thread = None
@@ -131,13 +131,13 @@ def perform_capture(sdr_unused, target_info):
                     output_chunk = (x * 32767).astype(np.int16)
                     wf.writeframes(output_chunk.tobytes())
 
-            logger.log(f"Captura de I/O finalizada. Total de bytes processados: {total_bytes_processed / (1024*1024):.2f} MB", "SUCCESS")
+            app_state.log(f"Captura de I/O finalizada. Total de bytes: {total_bytes_processed / (1024*1024):.2f} MB", "SUCCESS")
         
         if decode_thread:
-            logger.log("A aguardar o fim do processamento do decodificador...", "INFO")
+            app_state.log("Aguardando o fim do processamento do decodificador...", "INFO")
             decode_queue.put(None)
             decode_thread.join()
-            logger.log("Processamento do decodificador concluído.", "SUCCESS")
+            app_state.log("Processamento do decodificador concluído.", "SUCCESS")
 
         if decoder:
             image_path = decoder.finalize()
@@ -148,20 +148,22 @@ def perform_capture(sdr_unused, target_info):
         )
 
         if target_type == 'SSTV' and mode == 'RAW' and process_iss_capture:
-            logger.log("Captura SSTV detetada. A iniciar pós-processamento...", "INFO")
-            processing_thread = threading.Thread(target=process_iss_capture, args=(filepath, sample_rate, logger))
+            app_state.log("Captura SSTV detetada. Iniciando pós-processamento...", "INFO")
+            # O pós-processador também recebe o app_state para logar.
+            processing_thread = threading.Thread(target=process_iss_capture, args=(app_state, filepath, sample_rate))
             processing_thread.start()
 
     except Exception as e:
-        logger.log(f"Erro CRÍTICO durante a captura: {e}", "ERROR")
+        app_state.log(f"Erro CRÍTICO durante a captura: {e}", "ERROR")
 
     finally:
-        if process:
+        if process and process.poll() is None:
             try:
+                # Drena o restante da saída para evitar bloqueios.
                 stdout_data, stderr_data = process.communicate(timeout=5)
-                stderr_output = stderr_data.decode('utf-8', errors='ignore')
+                stderr_output = stderr_data.decode('utf-8', errors='ignore').strip()
                 if stderr_output:
-                    logger.log(f"Log do hackrf_transfer:\n{stderr_output}", "DEBUG")
+                    app_state.log(f"Log do hackrf_transfer:\n{stderr_output}", "DEBUG")
             except subprocess.TimeoutExpired:
-                logger.log("O processo hackrf_transfer não terminou a tempo. A forçar o encerramento.", "WARN")
+                app_state.log("O processo hackrf_transfer não respondeu. Forçando encerramento.", "WARN")
                 process.kill()
