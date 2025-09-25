@@ -18,7 +18,7 @@ def fetch_tle_from_url(url: str) -> str | None:
 def extract_tle_from_group(tle_group_text: str, satellite_name: str) -> list[str] | None:
     lines = tle_group_text.strip().splitlines()
     try:
-        idx = [i for i, line in enumerate(lines) if satellite_name.strip() == line.strip()][0]
+        idx = [i for i, line in enumerate(lines) if satellite_name.strip() in line.strip()][0]
         return lines[idx:idx+3]
     except IndexError:
         return None

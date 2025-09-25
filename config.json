@@ -20,7 +20,7 @@
     {
       "name": "NOAA 15",
       "type": "APT",
-      "tle_url": "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle",
+      "tle_url": "https://celestrak.org/NORAD/elements/gp.php?GROUP=noaa&FORMAT=tle",
       "frequency": 137620000,
       "capture_duration_seconds": 300,
       "lna_gain": 40,
@@ -29,7 +29,7 @@
     {
       "name": "NOAA 18",
       "type": "APT",
-      "tle_url": "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle",
+      "tle_url": "https://celestrak.org/NORAD/elements/gp.php?GROUP=noaa&FORMAT=tle",
       "frequency": 137912500,
       "capture_duration_seconds": 300,
       "lna_gain": 40,
@@ -38,7 +38,7 @@
     {
       "name": "NOAA 19",
       "type": "APT",
-      "tle_url": "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle",
+      "tle_url": "https://celestrak.org/NORAD/elements/gp.php?GROUP=noaa&FORMAT=tle",
       "frequency": 137100000,
       "capture_duration_seconds": 300,
       "lna_gain": 40,
