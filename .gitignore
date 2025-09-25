@@ -8,3 +8,5 @@
 /utils/__pycache__
 /utils
 /utils/__pycache__
+tle_cache/NOAA.txt
+tle_cache/ISS.txt
