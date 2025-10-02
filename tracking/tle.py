@@ -83,8 +83,8 @@ class TLEManager:
             with open(self.cache_file_path, "r") as f:
                 tle_data = f.read()
 
-        # skyfield's load.tle_file can parse from a string if it contains newlines
-        sats = load.tle_file(self.cache_file_path)
+        # skyfield's load.tle_file expects a string path, not a Path object.
+        sats = load.tle_file(str(self.cache_file_path))
         self.satellites = {sat.name: sat for sat in sats}
 
         logging.info(f"Loaded {len(self.satellites)} satellites: {list(self.satellites.keys())}")
