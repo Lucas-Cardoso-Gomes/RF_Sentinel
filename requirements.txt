@@ -1,0 +1,26 @@
+# Core
+fastapi
+uvicorn[standard]
+pydantic
+
+# SDR
+# pyhackrf - Note: May require manual installation steps
+# or a specific wrapper if a direct pip package is not suitable.
+# For now, we will add a placeholder and refine later.
+
+# Satellite Tracking
+skyfield
+requests
+
+# Signal Processing & Data
+numpy
+scipy
+soundfile
+Pillow # For image processing (dependency for APT decoder)
+
+# Database
+sqlalchemy
+alembic
+
+# CLI
+click

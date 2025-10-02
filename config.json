@@ -1,0 +1,30 @@
+{
+  "station": {
+    "latitude": 34.0522,
+    "longitude": -118.2437,
+    "elevation_m": 71
+  },
+  "sdr": {
+    "gain_lna": 16,
+    "gain_vga": 20
+  },
+  "noaa": {
+    "tle_url": "https://celestrak.org/NORAD/elements/weather.txt",
+    "tle_cache_days": 1,
+    "min_elevation_deg": 25,
+    "apt_bandwidth_hz": 40000
+  },
+  "idle_scan": {
+    "step_mhz": 20,
+    "duration_s": 10
+  },
+  "data_paths": {
+    "base": "data",
+    "captures": "data/captures",
+    "decoded": "data/decoded",
+    "db": "data/rfsentinel.db"
+  },
+  "logging": {
+    "level": "INFO"
+  }
+}
