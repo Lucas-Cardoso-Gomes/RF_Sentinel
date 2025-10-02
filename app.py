@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -17,17 +18,11 @@ from core.config import AppConfig
 from core.database import initialize_database
 from tracking.tle import TLEManager
 from tracking.predictor import PassPredictor, SatellitePass
+from sdr.hackrf import HackRF
 
 # --- Constants ---
 CONFIG_PATH = Path("config.json")
 CONFIG_EXAMPLE_PATH = Path("config.json.example")
-
-# --- Application Setup ---
-app = FastAPI(
-    title="RFSentinel",
-    description="An autonomous RF analysis system using HackRF One.",
-    version="0.1.0",
-)
 
 # --- Configuration Loading ---
 def load_configuration() -> AppConfig:
@@ -81,44 +76,65 @@ def setup_logging(log_level: str = "INFO"):
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 
-# --- Main Application Logic ---
-@app.on_event("startup")
-async def startup_event():
-    """Tasks to run when the application starts."""
+# --- Application Lifespan Management ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Manages application startup and shutdown events.
+    This is the modern replacement for on_event("startup") and on_event("shutdown").
+    """
+    # --- Startup Logic ---
+    logging.info("--- RFSentinel Starting Up ---")
+
+    # 1. Load Configuration
     try:
-        # 1. Load Configuration
-        config = load_configuration()
-        app.state.config = config
-
-        # 2. Setup Logging
-        setup_logging(config.logging.level)
-        logging.info("RFSentinel application starting up.")
+        app.state.config = load_configuration()
+        setup_logging(app.state.config.logging.level)
         logging.info("Configuration loaded and validated successfully.")
+    except (FileNotFoundError, ValidationError) as e:
+        logging.critical(f"Fatal error during configuration load: {e}", exc_info=True)
+        # Prevent app from starting if config is broken
+        raise RuntimeError("Configuration failed, cannot start.") from e
 
-        # 3. Initialize Database
-        initialize_database(str(config.data_paths.db))
-        logging.info(f"Database initialized at '{config.data_paths.db}'")
+    # 2. Initialize Database
+    initialize_database(str(app.state.config.data_paths.db))
+    logging.info(f"Database initialized at '{app.state.config.data_paths.db}'")
 
-        # 4. Initialize Satellite Tracker
-        try:
-            tle_manager = TLEManager(config)
-            tle_manager.load_satellites()  # Pre-load satellite data
-            app.state.tle_manager = tle_manager
+    # 3. Initialize Satellite Tracker
+    try:
+        tle_manager = TLEManager(app.state.config)
+        tle_manager.load_satellites()
+        app.state.tle_manager = tle_manager
+        app.state.pass_predictor = PassPredictor(app.state.config, tle_manager)
+        logging.info("Satellite tracking modules initialized successfully.")
+    except Exception as e:
+        logging.error(f"Failed to initialize satellite tracker: {e}", exc_info=True)
+        app.state.tle_manager = None
+        app.state.pass_predictor = None
 
-            pass_predictor = PassPredictor(config, tle_manager)
-            app.state.pass_predictor = pass_predictor
+    # 4. Initialize SDR Device
+    sdr_device = HackRF()
+    if sdr_device.open():
+        logging.info("HackRF device connected successfully.")
+        app.state.sdr_device = sdr_device
+    else:
+        logging.warning("Could not connect to HackRF device. SDR functions will be unavailable.")
+        app.state.sdr_device = None
 
-            logging.info("Satellite tracking modules initialized successfully.")
-        except Exception as e:
-            logging.error(f"Failed to initialize satellite tracker: {e}", exc_info=True)
-            app.state.tle_manager = None
-            app.state.pass_predictor = None
+    yield  # --- Application is now running ---
 
-    except (FileNotFoundError, ValidationError, RuntimeError) as e:
-        logging.critical(f"A critical error occurred during startup: {e}", exc_info=True)
-        # In a real application, you might want to exit gracefully.
-        # For now, we log and let FastAPI handle the shutdown.
-        raise
+    # --- Shutdown Logic ---
+    logging.info("--- RFSentinel Shutting Down ---")
+    if app.state.sdr_device:
+        app.state.sdr_device.close()
+
+# --- Application Setup ---
+app = FastAPI(
+    title="RFSentinel",
+    description="An autonomous RF analysis system using HackRF One.",
+    version="0.1.0",
+    lifespan=lifespan,
+)
 
 @app.get("/", summary="Root endpoint", description="Provides basic status information.")
 async def root():
@@ -129,30 +145,32 @@ async def root():
         "version": app.version,
     }
 
-# --- API Endpoints for Tracking ---
+# --- API Endpoints ---
+
+@app.get("/sdr/status", summary="Get SDR device status")
+async def get_sdr_status(request: Request):
+    """Checks and returns the connection status of the HackRF device."""
+    sdr_device: Optional[HackRF] = getattr(request.app.state, 'sdr_device', None)
+    if sdr_device and sdr_device.is_open:
+        return {"status": "connected", "device_info": "HackRF One"}
+    return {"status": "disconnected", "device_info": None}
 
 @app.get(
     "/tracking/next-pass",
     response_model=Optional[SatellitePass],
     summary="Get the next upcoming satellite pass",
-    description="Calculates and returns the details of the very next satellite pass with an elevation greater than the configured minimum.",
 )
 async def get_next_pass(request: Request):
     """
-    Endpoint to get the next satellite pass.
-    Returns the pass details or null if no pass is found soon.
+    Calculates and returns the details of the very next satellite pass
+    with an elevation greater than the configured minimum.
     """
     pass_predictor: Optional[PassPredictor] = getattr(request.app.state, 'pass_predictor', None)
     if not pass_predictor:
-        # This returns a 500 error by default, which is appropriate
-        # if a core component failed to initialize.
         raise Exception("Pass predictor is not available.")
 
     upcoming_passes = pass_predictor.find_upcoming_passes(hours_ahead=72)
-    if not upcoming_passes:
-        return None
-
-    return upcoming_passes[0]
+    return upcoming_passes[0] if upcoming_passes else None
 
 # --- Main Execution ---
 if __name__ == "__main__":

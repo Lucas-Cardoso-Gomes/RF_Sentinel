@@ -4,9 +4,9 @@ uvicorn[standard]
 pydantic
 
 # SDR
-# pyhackrf - Note: May require manual installation steps
-# or a specific wrapper if a direct pip package is not suitable.
-# For now, we will add a placeholder and refine later.
+# pyhackrf - Note: Requires system-level drivers (libhackrf)
+# This is commented out to allow the application to start in environments
+# where the drivers are not present. The sdr/hackrf.py module handles this.
 
 # Satellite Tracking
 skyfield
