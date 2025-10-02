@@ -1,8 +1,8 @@
 {
   "station": {
-    "latitude": 34.0522,
-    "longitude": -118.2437,
-    "elevation_m": 71
+    "latitude": -28.65,
+    "longitude": 55.99,
+    "elevation_m": 100
   },
   "sdr": {
     "gain_lna": 16,
